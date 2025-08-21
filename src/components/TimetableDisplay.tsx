@@ -1,6 +1,6 @@
 import { GeneratedTimetable } from '@/types/timetable';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface TimetableDisplayProps {
   timetable: GeneratedTimetable;
@@ -42,9 +42,9 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
       <div className="min-w-full">
         {/* Header */}
         <div className="grid grid-cols-8 gap-1 mb-4">
-          <div className="font-semibold text-sm text-muted-foreground">Time / Day</div>
+          <div className="font-semibold text-sm text-muted-foreground p-2 bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 rounded">Time / Day</div>
           {days.map(day => (
-            <div key={day} className="font-semibold text-sm text-center text-muted-foreground">
+            <div key={day} className="font-semibold text-sm text-center text-muted-foreground p-2 bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-900 dark:to-purple-900 rounded">
               {day}
             </div>
           ))}
@@ -57,34 +57,46 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
               {/* Period Row */}
               <div className="grid grid-cols-8 gap-1">
                 {/* Period Header */}
-                <div className="flex flex-col justify-center bg-muted p-2 rounded">
-                  <div className="font-medium text-sm">Period {period}</div>
-                  <div className="text-xs text-muted-foreground">{getTimeForPeriod(period)}</div>
+                <div className="flex flex-col justify-center bg-gradient-to-r from-emerald-100 to-teal-100 dark:from-emerald-900 dark:to-teal-900 p-3 rounded shadow-sm">
+                  <div className="font-medium text-sm">📅 Period {period}</div>
+                  <div className="text-xs text-muted-foreground">⏰ {getTimeForPeriod(period)}</div>
                 </div>
                 
-                {/* Day Cells */}
-                {days.map(day => {
-                  const entry = getEntryForSlot(day, period);
-                  return (
-                    <Card key={`${day}-${period}`} className="min-h-[80px]">
-                      <CardContent className="p-2">
-                        {entry ? (
-                          <div className="space-y-1">
-                            <div className="font-medium text-sm truncate">{entry.subject}</div>
-                            <div className="text-xs text-muted-foreground truncate">{entry.facultyName}</div>
-                            {entry.classRoom && (
-                              <Badge variant="secondary" className="text-xs">
-                                {entry.classRoom}
-                              </Badge>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="text-xs text-muted-foreground">Free</div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                 {/* Day Cells */}
+                 {days.map(day => {
+                   const entry = getEntryForSlot(day, period);
+                   return (
+                     <Card key={`${day}-${period}`} className="min-h-[80px]">
+                       <CardContent className="p-2">
+                         {entry ? (
+                           <div className={`rounded p-2 ${
+                             entry.subjectType === 'lab' 
+                               ? 'bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900 border-purple-300' 
+                               : 'bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-900 dark:to-cyan-900 border-blue-300'
+                           } border`}>
+                             <div className="font-medium text-sm flex items-center gap-1">
+                               {entry.subjectType === 'lab' ? '🧪' : '📖'} {entry.subject}
+                               {entry.batch && (
+                                 <Badge variant="outline" className="text-xs">
+                                   Batch {entry.batch}
+                                 </Badge>
+                               )}
+                             </div>
+                             <div className="text-xs text-muted-foreground font-medium">{entry.facultyName}</div>
+                             {entry.classRoom && (
+                               <div className="text-xs text-muted-foreground">📍 {entry.classRoom}</div>
+                             )}
+                             {entry.subjectType === 'lab' && entry.isLabContinuation && (
+                               <div className="text-xs text-purple-600 dark:text-purple-400">↪️ Continued</div>
+                             )}
+                           </div>
+                         ) : (
+                           <div className="text-muted-foreground text-center">-</div>
+                         )}
+                       </CardContent>
+                     </Card>
+                   );
+                 })}
               </div>
 
               {/* Break/Lunch Row */}
@@ -92,13 +104,13 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
                 const breakInfo = getBreakInfo(period);
                 return breakInfo && (
                   <div className="grid grid-cols-8 gap-1 mt-1">
-                    <div className="flex flex-col justify-center bg-accent/20 p-2 rounded">
-                      <div className="font-medium text-sm">{breakInfo.type}</div>
-                      <div className="text-xs text-muted-foreground">{breakInfo.time}</div>
+                    <div className="flex flex-col justify-center bg-gradient-to-r from-orange-100 to-red-100 dark:from-orange-900 dark:to-red-900 p-2 rounded shadow-sm">
+                      <div className="font-medium text-sm">☕ {breakInfo.type}</div>
+                      <div className="text-xs text-muted-foreground">⏰ {breakInfo.time}</div>
                     </div>
                     {days.map(day => (
-                      <div key={`${day}-break-${period}`} className="bg-accent/10 p-2 rounded min-h-[40px] flex items-center justify-center">
-                        <span className="text-xs text-muted-foreground">{breakInfo.type}</span>
+                      <div key={`${day}-break-${period}`} className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950 dark:to-red-950 p-2 rounded min-h-[40px] flex items-center justify-center border border-orange-200 dark:border-orange-800">
+                        <span className="text-xs text-muted-foreground">🍽️ {breakInfo.type}</span>
                       </div>
                     ))}
                   </div>

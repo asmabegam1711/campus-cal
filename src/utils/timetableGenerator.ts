@@ -122,11 +122,14 @@ export const generateTimetable = (
   const timeSlots = generateTimeSlots().filter(slot => slot.type === 'class');
   const entries: TimetableEntry[] = [];
   const facultySchedule: Map<string, Set<string>> = new Map();
-  const subjectLastAssigned: Map<string, string> = new Map(); // Track last assigned slot for each subject
+  const subjectPeriodsAllocated: Map<string, number> = new Map();
 
   // Initialize faculty schedule tracking
   faculties.forEach(faculty => {
     facultySchedule.set(faculty.id, new Set());
+    faculty.subjects.forEach(subject => {
+      subjectPeriodsAllocated.set(`${faculty.id}-${subject.name}`, 0);
+    });
   });
 
   // Group subjects by type
@@ -144,6 +147,7 @@ export const generateTimetable = (
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   
   labSubjects.forEach(({faculty, subject}) => {
+    const subjectKey = `${faculty.id}-${subject.name}`;
     const requiredSessions = Math.ceil(subject.periodsPerWeek / 3);
     let allocatedSessions = 0;
 
@@ -191,44 +195,71 @@ export const generateTimetable = (
           });
           
           allocatedSessions++;
+          subjectPeriodsAllocated.set(subjectKey, (subjectPeriodsAllocated.get(subjectKey) || 0) + 3);
         }
       }
     }
   });
 
-  // Then allocate theory sessions
-  const shuffledTheorySubjects = [...theorySubjects].sort(() => Math.random() - 0.5);
-  
-  timeSlots.forEach(slot => {
+  // Then allocate theory sessions - improved algorithm
+  const availableSlots = timeSlots.filter(slot => {
     const slotKey = `${slot.day}-${slot.period}`;
-    
-    // Skip if slot is already taken by lab
-    if (entries.some(entry => 
+    return !entries.some(entry => 
       entry.timeSlot.day === slot.day && 
       entry.timeSlot.period === slot.period
-    )) {
-      return;
+    );
+  });
+
+  // Create a weighted list of subjects that need more periods
+  const createSubjectPool = () => {
+    const pool: Array<{faculty: Faculty, subject: Subject}> = [];
+    theorySubjects.forEach(({faculty, subject}) => {
+      const subjectKey = `${faculty.id}-${subject.name}`;
+      const allocated = subjectPeriodsAllocated.get(subjectKey) || 0;
+      const needed = subject.periodsPerWeek - allocated;
+      
+      // Add subject multiple times based on how many periods it still needs
+      for (let i = 0; i < needed; i++) {
+        pool.push({faculty, subject});
+      }
+    });
+    return pool.sort(() => Math.random() - 0.5); // Shuffle for randomness
+  };
+
+  let subjectPool = createSubjectPool();
+  let previousSubject: string | null = null;
+
+  availableSlots.forEach(slot => {
+    const slotKey = `${slot.day}-${slot.period}`;
+    
+    // Refresh subject pool if empty
+    if (subjectPool.length === 0) {
+      subjectPool = createSubjectPool();
     }
     
-    // Find available theory subjects that don't create continuous allocation
-    const availableSubjects = shuffledTheorySubjects.filter(({faculty, subject}) => {
-      // Check if faculty is available
-      if (facultySchedule.get(faculty.id)?.has(slotKey)) return false;
+    // Find available subjects (faculty not busy, not same as previous period)
+    const availableSubjects = subjectPool.filter(({faculty, subject}) => {
+      const facultySlotKey = slotKey;
+      const isFacultyFree = !facultySchedule.get(faculty.id)?.has(facultySlotKey);
+      const isDifferentFromPrevious = subject.name !== previousSubject;
       
-      // Check if subject was allocated in previous period (avoid continuous allocation)
-      const prevPeriod = slot.period - 1;
-      const prevSlotKey = `${slot.day}-${prevPeriod}`;
-      const lastAssigned = subjectLastAssigned.get(subject.name);
-      
-      return lastAssigned !== prevSlotKey;
+      return isFacultyFree && isDifferentFromPrevious;
     });
     
     if (availableSubjects.length > 0) {
       const selected = availableSubjects[0];
+      const subjectKey = `${selected.faculty.id}-${selected.subject.name}`;
       
       // Add to faculty schedule
       facultySchedule.get(selected.faculty.id)?.add(slotKey);
-      subjectLastAssigned.set(selected.subject.name, slotKey);
+      subjectPeriodsAllocated.set(subjectKey, (subjectPeriodsAllocated.get(subjectKey) || 0) + 1);
+      previousSubject = selected.subject.name;
+      
+      // Remove from pool
+      const index = subjectPool.findIndex(s => s.faculty.id === selected.faculty.id && s.subject.name === selected.subject.name);
+      if (index !== -1) {
+        subjectPool.splice(index, 1);
+      }
       
       entries.push({
         id: `${slot.day}-${slot.period}-${selected.faculty.id}`,
@@ -239,6 +270,8 @@ export const generateTimetable = (
         subjectType: 'theory',
         classRoom: `Room ${Math.floor(Math.random() * 20) + 101}`
       });
+    } else {
+      previousSubject = null; // Reset if no allocation
     }
   });
 

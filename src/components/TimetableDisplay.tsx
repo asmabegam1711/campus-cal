@@ -1,6 +1,4 @@
 import { GeneratedTimetable } from '@/types/timetable';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 
@@ -18,6 +16,31 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
     );
   };
 
+  const getFormattedSubjectDisplay = (entries: any[]) => {
+    if (entries.length === 0) return 'Free';
+    
+    if (entries.length === 2 && entries[0].subjectType === 'lab') {
+      // Lab with batch splitting - format like "DA (A) / INS (B) LAB"
+      const batchA = entries.find(e => e.batch === 'A');
+      const batchB = entries.find(e => e.batch === 'B');
+      
+      if (batchA && batchB) {
+        if (batchA.subject === batchB.subject) {
+          return `${batchA.subject} LAB`;
+        } else {
+          return `${batchA.subject} (A) / ${batchB.subject} (B) LAB`;
+        }
+      }
+    }
+    
+    if (entries.length === 1) {
+      const entry = entries[0];
+      return entry.subjectType === 'lab' ? `${entry.subject} LAB` : entry.subject;
+    }
+    
+    return entries.map(e => e.subject).join(' / ');
+  };
+
   const getTimeForPeriod = (period: number) => {
     const timeMap: Record<number, string> = {
       1: '9:00-9:50',
@@ -33,9 +56,9 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
   };
 
   const getBreakInfo = (afterPeriod: number) => {
-    if (afterPeriod === 2) return { type: 'Break', time: '10:40-10:55' };
-    if (afterPeriod === 4) return { type: 'Lunch', time: '12:35-1:15' };
-    if (afterPeriod === 6) return { type: 'Break', time: '2:55-3:10' };
+    if (afterPeriod === 2) return 'BREAK';
+    if (afterPeriod === 4) return 'LUNCH BREAK';
+    if (afterPeriod === 6) return 'BREAK';
     return null;
   };
 
@@ -53,15 +76,14 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
   };
 
   const generateCSV = () => {
-    let csv = 'Day,Period,Time,Subject,Faculty,Type,Batch,Classroom\n';
+    let csv = 'Day,Period,Time,Subject,Faculty,Type,Batch\n';
     
     days.forEach(day => {
       periods.forEach(period => {
         const entries = getEntriesForSlot(day, period);
         if (entries.length > 0) {
-          entries.forEach(entry => {
-            csv += `${day},${period},${getTimeForPeriod(period)},${entry.subject},${entry.facultyName},${entry.subjectType},${entry.batch || ''},${entry.classRoom || ''}\n`;
-          });
+          const displayText = getFormattedSubjectDisplay(entries);
+          csv += `${day},${period},${getTimeForPeriod(period)},${displayText},,,,\n`;
         } else {
           csv += `${day},${period},${getTimeForPeriod(period)},Free,,,,\n`;
         }
@@ -87,91 +109,47 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
         </Button>
       </div>
 
+      {/* Timetable Table */}
       <div className="overflow-x-auto">
-        <div className="min-w-full">
-          {/* Header - Periods horizontal */}
-          <div className="grid grid-cols-9 gap-1 mb-4">
-            <div className="font-semibold text-sm text-muted-foreground p-2 bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 rounded">Day / Period</div>
-            {periods.map(period => (
-              <div key={period} className="font-semibold text-sm text-center text-muted-foreground p-2 bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-900 dark:to-purple-900 rounded">
-                <div>Period {period}</div>
-                <div className="text-xs">{getTimeForPeriod(period)}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Timetable Grid - Days vertical */}
-          <div className="space-y-2">
-            {days.map(day => (
-              <div key={day}>
-                {/* Day Row */}
-                <div className="grid grid-cols-9 gap-1">
-                  {/* Day Header */}
-                  <div className="flex items-center justify-center bg-gradient-to-r from-emerald-100 to-teal-100 dark:from-emerald-900 dark:to-teal-900 p-3 rounded shadow-sm">
-                    <div className="font-medium text-sm">📅 {day}</div>
+        <table className="w-full border-collapse border border-border">
+          {/* Header Row */}
+          <thead>
+            <tr>
+              <th className="border border-border p-2 bg-muted text-center font-medium">
+                Day/Time
+              </th>
+              {periods.map(period => (
+                <th key={period} className="border border-border p-2 bg-muted text-center font-medium min-w-[120px]">
+                  <div>Hour - {period}</div>
+                  <div className="text-xs font-normal">
+                    ({getTimeForPeriod(period).split('-')[0]} - {getTimeForPeriod(period).split('-')[1]})
                   </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          
+          {/* Body */}
+          <tbody>
+            {days.map(day => (
+              <tr key={day}>
+                <td className="border border-border p-2 bg-muted font-medium text-center">
+                  {day}
+                </td>
+                {periods.map(period => {
+                  const entries = getEntriesForSlot(day, period);
+                  const displayText = getFormattedSubjectDisplay(entries);
                   
-                  {/* Period Cells */}
-                  {periods.map(period => {
-                    const entries = getEntriesForSlot(day, period);
-                    return (
-                      <Card key={`${day}-${period}`} className="min-h-[80px]">
-                        <CardContent className="p-2">
-                          {entries.length > 0 ? (
-                            <div className="space-y-1">
-                              {entries.map((entry, index) => (
-                                <div key={entry.id} className={`rounded p-1 ${
-                                  entry.subjectType === 'lab' 
-                                    ? 'bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900 border-purple-300' 
-                                    : 'bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-900 dark:to-cyan-900 border-blue-300'
-                                } border`}>
-                                  <div className="font-medium text-xs flex items-center gap-1">
-                                    {entry.subjectType === 'lab' ? '🧪' : '📖'} {entry.subject}
-                                    {entry.batch && (
-                                      <Badge variant="outline" className="text-xs h-4">
-                                        {entry.batch}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">{entry.facultyName}</div>
-                                  {entry.classRoom && (
-                                    <div className="text-xs text-muted-foreground">📍 {entry.classRoom}</div>
-                                  )}
-                                  {entry.subjectType === 'lab' && entry.isLabContinuation && (
-                                    <div className="text-xs text-purple-600 dark:text-purple-400">↪️ Cont.</div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-muted-foreground text-center text-sm">Free</div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-
-                {/* Break/Lunch Row after specific periods */}
-                {[2, 4, 6].map(breakAfterPeriod => {
-                  const breakInfo = getBreakInfo(breakAfterPeriod);
-                  return breakInfo && (
-                    <div key={`${day}-break-${breakAfterPeriod}`} className="grid grid-cols-9 gap-1 mt-1 mb-2">
-                      <div className="flex items-center justify-center bg-gradient-to-r from-orange-100 to-red-100 dark:from-orange-900 dark:to-red-900 p-2 rounded shadow-sm">
-                        <div className="font-medium text-sm">☕ {breakInfo.type}</div>
-                      </div>
-                      {periods.map(period => (
-                        <div key={`${day}-break-${period}`} className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950 dark:to-red-950 p-2 rounded min-h-[30px] flex items-center justify-center border border-orange-200 dark:border-orange-800">
-                          <span className="text-xs text-muted-foreground">{breakInfo.type}</span>
-                        </div>
-                      ))}
-                    </div>
+                  return (
+                    <td key={`${day}-${period}`} className="border border-border p-2 text-center text-sm">
+                      {displayText}
+                    </td>
                   );
                 })}
-              </div>
+              </tr>
             ))}
-          </div>
-        </div>
+          </tbody>
+        </table>
       </div>
     </div>
   );

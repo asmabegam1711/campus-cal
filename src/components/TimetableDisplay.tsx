@@ -1,3 +1,4 @@
+import React from 'react';
 import { GeneratedTimetable } from '@/types/timetable';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
@@ -56,10 +57,34 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
   };
 
   const getBreakInfo = (afterPeriod: number) => {
-    if (afterPeriod === 2) return 'BREAK';
-    if (afterPeriod === 4) return 'LUNCH BREAK';
-    if (afterPeriod === 6) return 'BREAK';
+    if (afterPeriod === 2) return { type: 'break', time: '10:40-10:55', duration: '15 mins' };
+    if (afterPeriod === 4) return { type: 'lunch', time: '12:35-1:15', duration: '40 mins' };
+    if (afterPeriod === 6) return { type: 'break', time: '2:55-3:10', duration: '15 mins' };
     return null;
+  };
+
+  const getSubjectColor = (subject: string, isLab: boolean = false) => {
+    const colors = [
+      'bg-blue-100 text-blue-800 border-blue-200',
+      'bg-green-100 text-green-800 border-green-200', 
+      'bg-purple-100 text-purple-800 border-purple-200',
+      'bg-orange-100 text-orange-800 border-orange-200',
+      'bg-pink-100 text-pink-800 border-pink-200',
+      'bg-teal-100 text-teal-800 border-teal-200',
+      'bg-indigo-100 text-indigo-800 border-indigo-200',
+      'bg-red-100 text-red-800 border-red-200'
+    ];
+    
+    const labColors = [
+      'bg-blue-200 text-blue-900 border-blue-300',
+      'bg-green-200 text-green-900 border-green-300',
+      'bg-purple-200 text-purple-900 border-purple-300',
+      'bg-orange-200 text-orange-900 border-orange-300'
+    ];
+    
+    const colorSet = isLab ? labColors : colors;
+    const hash = subject.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+    return colorSet[hash % colorSet.length];
   };
 
   const downloadTimetable = () => {
@@ -110,40 +135,78 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
       </div>
 
       {/* Timetable Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse border border-border">
+      <div className="overflow-x-auto shadow-lg rounded-lg">
+        <table className="w-full border-collapse border-0">
           {/* Header Row */}
           <thead>
-            <tr>
-              <th className="border border-border p-2 bg-muted text-center font-medium">
+            <tr className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+              <th className="border border-gray-300 p-3 text-center font-bold">
                 Day/Time
               </th>
-              {periods.map(period => (
-                <th key={period} className="border border-border p-2 bg-muted text-center font-medium min-w-[120px]">
-                  <div>Hour - {period}</div>
-                  <div className="text-xs font-normal">
-                    ({getTimeForPeriod(period).split('-')[0]} - {getTimeForPeriod(period).split('-')[1]})
-                  </div>
-                </th>
+              {periods.map((period, index) => (
+                <React.Fragment key={period}>
+                  <th className="border border-gray-300 p-3 text-center font-bold min-w-[140px]">
+                    <div className="text-sm">Hour {period}</div>
+                    <div className="text-xs font-normal opacity-90">
+                      {getTimeForPeriod(period)}
+                    </div>
+                  </th>
+                  {/* Break columns */}
+                  {[2, 4, 6].includes(period) && (
+                    <th className="border border-gray-300 p-2 bg-yellow-500 text-yellow-900 text-center font-bold min-w-[100px]">
+                      <div className="text-xs">
+                        {getBreakInfo(period)?.type.toUpperCase()}
+                      </div>
+                      <div className="text-xs font-normal">
+                        {getBreakInfo(period)?.time}
+                      </div>
+                    </th>
+                  )}
+                </React.Fragment>
               ))}
             </tr>
           </thead>
           
           {/* Body */}
           <tbody>
-            {days.map(day => (
-              <tr key={day}>
-                <td className="border border-border p-2 bg-muted font-medium text-center">
+            {days.map((day, dayIndex) => (
+              <tr key={day} className={dayIndex % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                <td className="border border-gray-300 p-3 bg-gradient-to-r from-indigo-500 to-blue-500 text-white font-bold text-center">
                   {day}
                 </td>
-                {periods.map(period => {
+                {periods.map((period, periodIndex) => {
                   const entries = getEntriesForSlot(day, period);
                   const displayText = getFormattedSubjectDisplay(entries);
+                  const isLab = entries.length > 0 && entries[0].subjectType === 'lab';
+                  const colorClass = displayText !== 'Free' ? getSubjectColor(displayText, isLab) : 'bg-gray-100 text-gray-500';
                   
                   return (
-                    <td key={`${day}-${period}`} className="border border-border p-2 text-center text-sm">
-                      {displayText}
-                    </td>
+                    <React.Fragment key={`${day}-${period}`}>
+                      <td className={`border border-gray-300 p-2 text-center text-sm font-medium ${colorClass} relative`}>
+                        <div className="rounded-md p-2 h-full flex items-center justify-center">
+                          {displayText === 'Free' ? (
+                            <span className="text-gray-400 italic">Free</span>
+                          ) : (
+                            <span className="font-semibold">{displayText}</span>
+                          )}
+                        </div>
+                      </td>
+                      {/* Break cells */}
+                      {[2, 4, 6].includes(period) && (
+                        <td className="border border-gray-300 p-2 text-center">
+                          <div className={`rounded-md p-2 h-full flex flex-col items-center justify-center text-xs font-medium ${
+                            period === 4 ? 'bg-orange-200 text-orange-800' : 'bg-yellow-200 text-yellow-800'
+                          }`}>
+                            <div className="font-bold">
+                              {getBreakInfo(period)?.type.toUpperCase()}
+                            </div>
+                            <div className="text-xs">
+                              {getBreakInfo(period)?.duration}
+                            </div>
+                          </div>
+                        </td>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tr>

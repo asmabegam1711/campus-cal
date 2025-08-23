@@ -123,8 +123,8 @@ export const generateTimetable = (
   const entries: TimetableEntry[] = [];
   const facultySchedule: Map<string, Set<string>> = new Map();
   const subjectWeeklyCount: Map<string, number> = new Map();
-  const dayLabAllocated: Map<string, boolean> = new Map();
-
+  const subjectDailyCount: Map<string, Map<string, number>> = new Map();
+  
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   
   // Initialize tracking
@@ -132,12 +132,10 @@ export const generateTimetable = (
     facultySchedule.set(faculty.id, new Set());
     faculty.subjects.forEach(subject => {
       subjectWeeklyCount.set(subject.name, 0);
+      const dailyMap = new Map();
+      daysOfWeek.forEach(day => dailyMap.set(day, 0));
+      subjectDailyCount.set(subject.name, dailyMap);
     });
-  });
-
-  // Initialize day lab tracking
-  daysOfWeek.forEach(day => {
-    dayLabAllocated.set(day, false);
   });
 
   // Group subjects by type
@@ -151,165 +149,232 @@ export const generateTimetable = (
   const theorySubjects = allSubjects.filter(s => s.subject.type === 'theory');
   const labSubjects = allSubjects.filter(s => s.subject.type === 'lab');
 
-  // Allocate one lab per day with batch splitting
-  daysOfWeek.forEach((day, dayIndex) => {
-    if (labSubjects.length === 0) return;
+  // Strategic lab allocation - distribute across different days
+  const allocateLabs = () => {
+    const labAllocationPlan = new Map<string, Array<{faculty: Faculty, subject: Subject}>>();
     
-    // Select lab for this day (rotate through available labs)
-    const availableLabs = labSubjects.filter(({subject}) => 
-      (subjectWeeklyCount.get(subject.name) || 0) < Math.ceil(subject.periodsPerWeek / 3)
-    );
-    
-    if (availableLabs.length === 0) return;
-    
-    const selectedLab = availableLabs[dayIndex % availableLabs.length];
-    
-    // Find 3 continuous periods for lab
-    for (let startPeriod = 1; startPeriod <= 6; startPeriod++) {
-      const periodsNeeded = [startPeriod, startPeriod + 1, startPeriod + 2];
-      
-      // Check if periods are available
-      const canAllocate = periodsNeeded.every(period => {
-        if (period > 8) return false;
-        const slotKey = `${day}-${period}`;
-        return !facultySchedule.get(selectedLab.faculty.id)?.has(slotKey);
-      });
-
-      if (canAllocate) {
-        // Get another lab subject for batch B if available
-        const otherLabs = availableLabs.filter(lab => 
-          lab.subject.name !== selectedLab.subject.name &&
-          (subjectWeeklyCount.get(lab.subject.name) || 0) < Math.ceil(lab.subject.periodsPerWeek / 3)
-        );
-        
-        const batchBLab = otherLabs.length > 0 ? otherLabs[0] : selectedLab;
-        
-        periodsNeeded.forEach((period, index) => {
-          const slotKey = `${day}-${period}`;
-          const timeSlot = timeSlots.find(slot => slot.day === day && slot.period === period);
-          
-          if (timeSlot) {
-            // Batch A - Selected lab
-            entries.push({
-              id: `${day}-${period}-${selectedLab.faculty.id}-A`,
-              timeSlot,
-              facultyId: selectedLab.faculty.id,
-              facultyName: selectedLab.faculty.name,
-              subject: selectedLab.subject.name,
-              subjectType: 'lab',
-              batch: 'A',
-              isLabContinuation: index > 0
-            });
-            
-            // Batch B - Different lab or same lab
-            entries.push({
-              id: `${day}-${period}-${batchBLab.faculty.id}-B`,
-              timeSlot,
-              facultyId: batchBLab.faculty.id,
-              facultyName: batchBLab.faculty.name,
-              subject: batchBLab.subject.name,
-              subjectType: 'lab',
-              batch: 'B',
-              isLabContinuation: index > 0
-            });
-            
-            facultySchedule.get(selectedLab.faculty.id)?.add(slotKey);
-            if (batchBLab.faculty.id !== selectedLab.faculty.id) {
-              facultySchedule.get(batchBLab.faculty.id)?.add(slotKey);
-            }
-          }
-        });
-        
-        subjectWeeklyCount.set(selectedLab.subject.name, (subjectWeeklyCount.get(selectedLab.subject.name) || 0) + 1);
-        if (batchBLab.subject.name !== selectedLab.subject.name) {
-          subjectWeeklyCount.set(batchBLab.subject.name, (subjectWeeklyCount.get(batchBLab.subject.name) || 0) + 1);
-        }
-        dayLabAllocated.set(day, true);
-        break;
+    // Distribute labs across days to avoid clustering
+    labSubjects.forEach((lab, index) => {
+      const targetDay = daysOfWeek[index % daysOfWeek.length];
+      if (!labAllocationPlan.has(targetDay)) {
+        labAllocationPlan.set(targetDay, []);
       }
-    }
-  });
+      labAllocationPlan.get(targetDay)!.push(lab);
+    });
 
-  // Allocate theory subjects ensuring all subjects appear weekly
-  const availableSlots = timeSlots.filter(slot => {
-    return !entries.some(entry => 
-      entry.timeSlot.day === slot.day && 
-      entry.timeSlot.period === slot.period
-    );
-  });
-
-  // Create subject pool ensuring weekly distribution
-  const createBalancedSubjectPool = () => {
-    const pool: Array<{faculty: Faculty, subject: Subject, priority: number}> = [];
-    
-    theorySubjects.forEach(({faculty, subject}) => {
-      const weeklyCount = subjectWeeklyCount.get(subject.name) || 0;
-      const targetWeekly = Math.ceil(subject.periodsPerWeek / 6); // Distribute across 6 days
-      const priority = targetWeekly - weeklyCount; // Higher priority for subjects with fewer allocations
+    // Allocate labs with batch splitting
+    labAllocationPlan.forEach((labs, day) => {
+      if (labs.length === 0) return;
       
-      if (priority > 0) {
-        for (let i = 0; i < subject.periodsPerWeek; i++) {
-          pool.push({faculty, subject, priority});
+      // Find available 3-period slots for lab
+      const findLabSlot = () => {
+        for (let startPeriod = 1; startPeriod <= 6; startPeriod++) {
+          const periodsNeeded = [startPeriod, startPeriod + 1, startPeriod + 2];
+          
+          const canAllocate = periodsNeeded.every(period => {
+            if (period > 8) return false;
+            const slotKey = `${day}-${period}`;
+            return !entries.some(entry => 
+              entry.timeSlot.day === day && entry.timeSlot.period === period
+            );
+          });
+
+          if (canAllocate) {
+            return { startPeriod, periodsNeeded };
+          }
         }
+        return null;
+      };
+
+      const labSlot = findLabSlot();
+      if (!labSlot) return;
+
+      // Select primary lab and secondary lab for batch splitting
+      const primaryLab = labs[0];
+      const secondaryLab = labs.length > 1 ? labs[1] : primaryLab;
+      
+      labSlot.periodsNeeded.forEach((period, index) => {
+        const timeSlot = timeSlots.find(slot => slot.day === day && slot.period === period);
+        
+        if (timeSlot) {
+          // Batch A - Primary lab
+          entries.push({
+            id: `${day}-${period}-${primaryLab.faculty.id}-A`,
+            timeSlot,
+            facultyId: primaryLab.faculty.id,
+            facultyName: primaryLab.faculty.name,
+            subject: primaryLab.subject.name,
+            subjectType: 'lab',
+            batch: 'A',
+            isLabContinuation: index > 0
+          });
+          
+          // Batch B - Secondary lab
+          entries.push({
+            id: `${day}-${period}-${secondaryLab.faculty.id}-B`,
+            timeSlot,
+            facultyId: secondaryLab.faculty.id,
+            facultyName: secondaryLab.faculty.name,
+            subject: secondaryLab.subject.name,
+            subjectType: 'lab',
+            batch: 'B',
+            isLabContinuation: index > 0
+          });
+          
+          // Mark faculty as busy
+          facultySchedule.get(primaryLab.faculty.id)?.add(`${day}-${period}`);
+          if (secondaryLab.faculty.id !== primaryLab.faculty.id) {
+            facultySchedule.get(secondaryLab.faculty.id)?.add(`${day}-${period}`);
+          }
+        }
+      });
+      
+      // Update subject counts
+      subjectWeeklyCount.set(primaryLab.subject.name, (subjectWeeklyCount.get(primaryLab.subject.name) || 0) + 1);
+      if (secondaryLab.subject.name !== primaryLab.subject.name) {
+        subjectWeeklyCount.set(secondaryLab.subject.name, (subjectWeeklyCount.get(secondaryLab.subject.name) || 0) + 1);
       }
     });
-    
-    return pool.sort((a, b) => b.priority - a.priority || Math.random() - 0.5);
   };
 
-  let subjectPool = createBalancedSubjectPool();
-  const dailySubjects: Map<string, Set<string>> = new Map();
-  
-  // Initialize daily subject tracking
-  daysOfWeek.forEach(day => {
-    dailySubjects.set(day, new Set());
-  });
+  allocateLabs();
 
-  availableSlots.forEach(slot => {
-    const slotKey = `${slot.day}-${slot.period}`;
-    const daySubjectsSet = dailySubjects.get(slot.day) || new Set();
-    
-    // Refresh subject pool if empty
-    if (subjectPool.length === 0) {
-      subjectPool = createBalancedSubjectPool();
-    }
-    
-    // Find available subjects (faculty not busy, preferably not allocated today)
-    const availableSubjects = subjectPool.filter(({faculty, subject}) => {
-      const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
-      const notAllocatedToday = !daySubjectsSet.has(subject.name);
-      
-      return isFacultyFree && (notAllocatedToday || daySubjectsSet.size < theorySubjects.length);
-    });
-    
-    if (availableSubjects.length > 0) {
-      // Prefer subjects not allocated today
-      const preferredSubjects = availableSubjects.filter(({subject}) => !daySubjectsSet.has(subject.name));
-      const selected = preferredSubjects.length > 0 ? preferredSubjects[0] : availableSubjects[0];
-      
-      // Add to schedule
-      facultySchedule.get(selected.faculty.id)?.add(slotKey);
-      daySubjectsSet.add(selected.subject.name);
-      subjectWeeklyCount.set(selected.subject.name, (subjectWeeklyCount.get(selected.subject.name) || 0) + 1);
-      
-      // Remove from pool
-      const index = subjectPool.findIndex(s => 
-        s.faculty.id === selected.faculty.id && s.subject.name === selected.subject.name
+  // Smart theory allocation - prevent continuous allocation
+  const allocateTheorySubjects = () => {
+    const availableSlots = timeSlots.filter(slot => {
+      return !entries.some(entry => 
+        entry.timeSlot.day === slot.day && 
+        entry.timeSlot.period === slot.period
       );
-      if (index !== -1) {
-        subjectPool.splice(index, 1);
+    });
+
+    // Create distributed subject pool
+    const createSubjectPool = () => {
+      const pool: Array<{faculty: Faculty, subject: Subject, priority: number}> = [];
+      
+      theorySubjects.forEach(({faculty, subject}) => {
+        const weeklyCount = subjectWeeklyCount.get(subject.name) || 0;
+        const targetWeekly = Math.ceil(subject.periodsPerWeek / 6);
+        
+        for (let i = 0; i < subject.periodsPerWeek; i++) {
+          pool.push({
+            faculty, 
+            subject, 
+            priority: (targetWeekly - weeklyCount) * 10 + Math.random()
+          });
+        }
+      });
+      
+      return pool.sort((a, b) => b.priority - a.priority);
+    };
+
+    let subjectPool = createSubjectPool();
+    const dailySubjectUsage: Map<string, Set<string>> = new Map();
+    
+    // Initialize daily tracking
+    daysOfWeek.forEach(day => {
+      dailySubjectUsage.set(day, new Set());
+    });
+
+    // Allocate subjects with anti-clustering logic
+    availableSlots.forEach(slot => {
+      const slotKey = `${slot.day}-${slot.period}`;
+      const dayUsage = dailySubjectUsage.get(slot.day) || new Set();
+      
+      if (subjectPool.length === 0) {
+        subjectPool = createSubjectPool();
       }
       
-      entries.push({
-        id: `${slot.day}-${slot.period}-${selected.faculty.id}`,
-        timeSlot: slot,
-        facultyId: selected.faculty.id,
-        facultyName: selected.faculty.name,
-        subject: selected.subject.name,
-        subjectType: 'theory'
-      });
-    }
-  });
+      // Find best subject avoiding continuous allocation
+      const findBestSubject = () => {
+        // Priority 1: Subjects not used today
+        let candidates = subjectPool.filter(({faculty, subject}) => {
+          const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
+          const notUsedToday = !dayUsage.has(subject.name);
+          const notContinuous = !isSubjectContinuous(slot, subject.name);
+          
+          return isFacultyFree && notUsedToday && notContinuous;
+        });
+        
+        if (candidates.length === 0) {
+          // Priority 2: Faculty free, avoid continuous
+          candidates = subjectPool.filter(({faculty, subject}) => {
+            const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
+            const notContinuous = !isSubjectContinuous(slot, subject.name);
+            
+            return isFacultyFree && notContinuous;
+          });
+        }
+        
+        if (candidates.length === 0) {
+          // Priority 3: Just faculty free
+          candidates = subjectPool.filter(({faculty}) => {
+            return !facultySchedule.get(faculty.id)?.has(slotKey);
+          });
+        }
+        
+        return candidates.length > 0 ? candidates[0] : null;
+      };
+
+      const isSubjectContinuous = (currentSlot: TimeSlot, subjectName: string) => {
+        // Check previous period
+        if (currentSlot.period > 1) {
+          const prevEntry = entries.find(entry => 
+            entry.timeSlot.day === currentSlot.day && 
+            entry.timeSlot.period === currentSlot.period - 1 &&
+            entry.subject === subjectName
+          );
+          if (prevEntry) return true;
+        }
+        
+        // Check next period
+        if (currentSlot.period < 8) {
+          const nextEntry = entries.find(entry => 
+            entry.timeSlot.day === currentSlot.day && 
+            entry.timeSlot.period === currentSlot.period + 1 &&
+            entry.subject === subjectName
+          );
+          if (nextEntry) return true;
+        }
+        
+        return false;
+      };
+
+      const selected = findBestSubject();
+      
+      if (selected) {
+        // Allocate the subject
+        facultySchedule.get(selected.faculty.id)?.add(slotKey);
+        dayUsage.add(selected.subject.name);
+        subjectWeeklyCount.set(selected.subject.name, (subjectWeeklyCount.get(selected.subject.name) || 0) + 1);
+        
+        // Update daily count
+        const dailyMap = subjectDailyCount.get(selected.subject.name);
+        if (dailyMap) {
+          dailyMap.set(slot.day, (dailyMap.get(slot.day) || 0) + 1);
+        }
+        
+        // Remove from pool
+        const index = subjectPool.findIndex(s => 
+          s.faculty.id === selected.faculty.id && s.subject.name === selected.subject.name
+        );
+        if (index !== -1) {
+          subjectPool.splice(index, 1);
+        }
+        
+        entries.push({
+          id: `${slot.day}-${slot.period}-${selected.faculty.id}`,
+          timeSlot: slot,
+          facultyId: selected.faculty.id,
+          facultyName: selected.faculty.name,
+          subject: selected.subject.name,
+          subjectType: 'theory'
+        });
+      }
+    });
+  };
+
+  allocateTheorySubjects();
 
   return {
     id: Date.now().toString(),

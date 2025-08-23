@@ -74,6 +74,17 @@ const FacultyDashboard = () => {
       return;
     }
 
+    // Check for duplicate faculty ID
+    const existingFaculty = faculties.find(f => f.id === newFaculty.id);
+    if (existingFaculty) {
+      toast({
+        title: "Faculty ID Already Exists",
+        description: `Faculty ID "${newFaculty.id}" is already allocated to ${existingFaculty.name}. Please use a different ID.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     const validSubjects = newFaculty.subjects.filter(subject => subject.name.trim() !== '');
     if (validSubjects.length === 0) {
       toast({

@@ -1,13 +1,17 @@
 import React from 'react';
 import { GeneratedTimetable } from '@/types/timetable';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Download, FileSpreadsheet, FileText, Trash2 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 interface TimetableDisplayProps {
   timetable: GeneratedTimetable;
+  onDelete?: () => void;
 }
 
-const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
+const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const periods = [1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -87,7 +91,7 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
     return colorSet[hash % colorSet.length];
   };
 
-  const downloadTimetable = () => {
+  const downloadCSV = () => {
     const csvContent = generateCSV();
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -98,6 +102,60 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const downloadPDF = () => {
+    const doc = new jsPDF('l', 'mm', 'a4'); // landscape orientation
+    
+    // Add title
+    doc.setFontSize(16);
+    doc.text(`Timetable - ${timetable.className} Year ${timetable.year} Section ${timetable.section} Semester ${timetable.semester}`, 20, 20);
+    
+    // Prepare table data
+    const tableData: any[] = [];
+    const headers = ['Time/Day', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    
+    periods.forEach(period => {
+      const row = [getTimeForPeriod(period)];
+      days.forEach(day => {
+        const entries = getEntriesForSlot(day, period);
+        const displayText = entries.length > 0 ? getFormattedSubjectDisplay(entries) : 'Free';
+        row.push(displayText);
+      });
+      tableData.push(row);
+      
+      // Add break info after certain periods
+      const breakInfo = getBreakInfo(period);
+      if (breakInfo) {
+        const breakRow = [breakInfo.type.toUpperCase() + ' (' + breakInfo.duration + ')', '', '', '', '', '', ''];
+        tableData.push(breakRow);
+      }
+    });
+    
+    // Generate table using autoTable
+    (doc as any).autoTable({
+      head: [headers],
+      body: tableData,
+      startY: 30,
+      theme: 'grid',
+      styles: {
+        fontSize: 8,
+        cellPadding: 3,
+      },
+      headStyles: {
+        fillColor: [59, 130, 246],
+        textColor: 255,
+        fontStyle: 'bold',
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252],
+      },
+      columnStyles: {
+        0: { cellWidth: 25, fontStyle: 'bold' },
+      },
+    });
+    
+    doc.save(`timetable_${timetable.className}_Year${timetable.year}_${timetable.section}_Sem${timetable.semester}.pdf`);
   };
 
   const generateCSV = () => {
@@ -120,19 +178,46 @@ const TimetableDisplay = ({ timetable }: TimetableDisplayProps) => {
 
   return (
     <div className="space-y-4">
-      {/* Header with Download Button */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold">
-            {timetable.className} - Year {timetable.year} - Section {timetable.section} - Semester {timetable.semester}
-          </h2>
-          <p className="text-muted-foreground">Generated on {timetable.createdAt.toLocaleDateString()}</p>
-        </div>
-        <Button onClick={downloadTimetable} className="flex items-center gap-2">
-          <Download className="h-4 w-4" />
-          Download CSV
-        </Button>
-      </div>
+      {/* Header with Download Buttons */}
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <div>
+              <CardTitle className="text-2xl font-bold">
+                {timetable.className} - Year {timetable.year} - Section {timetable.section} - Semester {timetable.semester}
+              </CardTitle>
+              <CardDescription>
+                Generated on {timetable.createdAt.toLocaleDateString()}
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                onClick={downloadCSV} 
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Download CSV
+              </Button>
+              <Button 
+                onClick={downloadPDF} 
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <FileText className="mr-2 h-4 w-4" />
+                Download PDF
+              </Button>
+              {onDelete && (
+                <Button 
+                  onClick={onDelete} 
+                  variant="destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
 
       {/* Timetable Table */}
       <div className="overflow-x-auto shadow-lg rounded-lg">

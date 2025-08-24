@@ -398,7 +398,10 @@ const FacultyDashboard = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <TimetableDisplay timetable={generatedTimetable} />
+          <TimetableDisplay 
+            timetable={generatedTimetable} 
+            onDelete={() => setGeneratedTimetable(null)}
+          />
             </CardContent>
           </Card>
         )}

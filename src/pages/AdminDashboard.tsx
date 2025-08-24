@@ -260,7 +260,10 @@ const AdminDashboard = () => {
               </div>
             </CardHeader>
             <CardContent>
-              <TimetableDisplay timetable={selectedTimetable} />
+                  <TimetableDisplay 
+                    timetable={selectedTimetable} 
+                    onDelete={() => deleteTimetable(selectedTimetable.id)}
+                  />
             </CardContent>
           </Card>
         )}

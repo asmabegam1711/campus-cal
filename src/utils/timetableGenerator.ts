@@ -154,11 +154,8 @@ export const generateTimetable = (
     const labDays = ['Monday', 'Wednesday', 'Friday']; // Distribute labs on alternate days
     let labDayIndex = 0;
     
-    // Process labs in pairs for batch splitting
-    for (let i = 0; i < labSubjects.length; i += 2) {
-      const lab1 = labSubjects[i];
-      const lab2 = labSubjects[i + 1] || labSubjects[0]; // Fallback to first lab if odd number
-      
+    // Process each lab subject individually for proper allocation
+    labSubjects.forEach((labSubject, index) => {
       const targetDay = labDays[labDayIndex % labDays.length];
       labDayIndex++;
       
@@ -182,46 +179,52 @@ export const generateTimetable = (
       };
 
       const labSlot = findLabSlot();
-      if (!labSlot) continue;
+      if (!labSlot) return;
       
-      labSlot.periodsNeeded.forEach((period, index) => {
+      // Find another lab subject for batch B (different from current lab)
+      const otherLabSubjects = labSubjects.filter(lab => lab.subject.name !== labSubject.subject.name);
+      const batchBLab = otherLabSubjects.length > 0 
+        ? otherLabSubjects[index % otherLabSubjects.length] 
+        : labSubjects[(index + 1) % labSubjects.length];
+      
+      labSlot.periodsNeeded.forEach((period, periodIndex) => {
         const timeSlot = timeSlots.find(slot => slot.day === targetDay && slot.period === period);
         
         if (timeSlot) {
-          // Batch A - First lab subject
+          // Batch A - Current lab subject
           entries.push({
-            id: `${targetDay}-${period}-${lab1.faculty.id}-A`,
+            id: `${targetDay}-${period}-${labSubject.faculty.id}-A`,
             timeSlot,
-            facultyId: lab1.faculty.id,
-            facultyName: lab1.faculty.name,
-            subject: lab1.subject.name,
+            facultyId: labSubject.faculty.id,
+            facultyName: labSubject.faculty.name,
+            subject: labSubject.subject.name,
             subjectType: 'lab',
             batch: 'A',
-            isLabContinuation: index > 0
+            isLabContinuation: periodIndex > 0
           });
           
-          // Batch B - Second lab subject (different from batch A)
+          // Batch B - Different lab subject
           entries.push({
-            id: `${targetDay}-${period}-${lab2.faculty.id}-B`,
+            id: `${targetDay}-${period}-${batchBLab.faculty.id}-B`,
             timeSlot,
-            facultyId: lab2.faculty.id,
-            facultyName: lab2.faculty.name,
-            subject: lab2.subject.name,
+            facultyId: batchBLab.faculty.id,
+            facultyName: batchBLab.faculty.name,
+            subject: batchBLab.subject.name,
             subjectType: 'lab',
             batch: 'B',
-            isLabContinuation: index > 0
+            isLabContinuation: periodIndex > 0
           });
           
           // Mark faculty as busy
-          facultySchedule.get(lab1.faculty.id)?.add(`${targetDay}-${period}`);
-          facultySchedule.get(lab2.faculty.id)?.add(`${targetDay}-${period}`);
+          facultySchedule.get(labSubject.faculty.id)?.add(`${targetDay}-${period}`);
+          facultySchedule.get(batchBLab.faculty.id)?.add(`${targetDay}-${period}`);
         }
       });
       
       // Update subject counts
-      subjectWeeklyCount.set(lab1.subject.name, (subjectWeeklyCount.get(lab1.subject.name) || 0) + 1);
-      subjectWeeklyCount.set(lab2.subject.name, (subjectWeeklyCount.get(lab2.subject.name) || 0) + 1);
-    }
+      subjectWeeklyCount.set(labSubject.subject.name, (subjectWeeklyCount.get(labSubject.subject.name) || 0) + 1);
+      subjectWeeklyCount.set(batchBLab.subject.name, (subjectWeeklyCount.get(batchBLab.subject.name) || 0) + 1);
+    });
   };
 
   allocateLabs();

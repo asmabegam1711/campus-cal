@@ -134,32 +134,35 @@ const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
       });
       
       // Import autoTable properly
-      const autoTable = require('jspdf-autotable').default;
-      
-      // Generate table using autoTable
-      autoTable(doc, {
-        head: [headers],
-        body: tableData,
-        startY: 30,
-        theme: 'grid',
-        styles: {
-          fontSize: 8,
-          cellPadding: 3,
-        },
-        headStyles: {
-          fillColor: [59, 130, 246],
-          textColor: 255,
-          fontStyle: 'bold',
-        },
-        alternateRowStyles: {
-          fillColor: [248, 250, 252],
-        },
-        columnStyles: {
-          0: { cellWidth: 25, fontStyle: 'bold' },
-        },
+      import('jspdf-autotable').then(({ default: autoTable }) => {
+        // Generate table using autoTable
+        autoTable(doc, {
+          head: [headers],
+          body: tableData,
+          startY: 30,
+          theme: 'grid',
+          styles: {
+            fontSize: 8,
+            cellPadding: 3,
+          },
+          headStyles: {
+            fillColor: [59, 130, 246],
+            textColor: 255,
+            fontStyle: 'bold',
+          },
+          alternateRowStyles: {
+            fillColor: [248, 250, 252],
+          },
+          columnStyles: {
+            0: { cellWidth: 25, fontStyle: 'bold' },
+          },
+        });
+        
+        doc.save(`timetable_${timetable.className}_Year${timetable.year}_${timetable.section}_Sem${timetable.semester}.pdf`);
+      }).catch(error => {
+        console.error('Error loading autoTable:', error);
+        alert('Error generating PDF. Please try again.');
       });
-      
-      doc.save(`timetable_${timetable.className}_Year${timetable.year}_${timetable.section}_Sem${timetable.semester}.pdf`);
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('Error generating PDF. Please try again.');

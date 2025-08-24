@@ -4,11 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { GraduationCap, Settings, BookOpen, Calendar } from 'lucide-react';
+import { GraduationCap, Settings, BookOpen, Calendar, User } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const Login = () => {
-  const [loginType, setLoginType] = useState<'faculty' | 'admin' | null>(null);
+  const [loginType, setLoginType] = useState<'faculty' | 'admin' | 'student' | null>(null);
   const [credentials, setCredentials] = useState({ username: '', password: '' });
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -40,6 +40,14 @@ const Login = () => {
         role: 'admin'
       }));
       navigate('/admin');
+    } else if (loginType === 'student') {
+      // Student login would require backend authentication
+      toast({
+        title: "Info",
+        description: "Student login requires Supabase integration for authentication",
+        variant: "default",
+      });
+      return;
     }
 
     toast({
@@ -66,7 +74,7 @@ const Login = () => {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-3 gap-6">
             <Card className="cursor-pointer transition-all hover:shadow-lg hover:scale-105 border-2 hover:border-primary/20"
                   onClick={() => setLoginType('faculty')}>
               <CardHeader className="text-center pb-2">
@@ -87,6 +95,31 @@ const Login = () => {
                   <div className="flex items-center justify-center gap-2">
                     <Calendar className="h-4 w-4" />
                     <span>Manage Subjects</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="cursor-pointer transition-all hover:shadow-lg hover:scale-105 border-2 hover:border-green-500/20"
+                  onClick={() => setLoginType('student')}>
+              <CardHeader className="text-center pb-2">
+                <div className="mx-auto w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mb-4">
+                  <User className="h-8 w-8 text-green-500" />
+                </div>
+                <CardTitle className="text-2xl">Student Login</CardTitle>
+                <CardDescription className="text-base">
+                  View your class timetable
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-center">
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <div className="flex items-center justify-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    <span>View Timetable</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-2">
+                    <BookOpen className="h-4 w-4" />
+                    <span>Class Schedule</span>
                   </div>
                 </div>
               </CardContent>
@@ -129,7 +162,9 @@ const Login = () => {
           <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
             {loginType === 'faculty' ? 
               <GraduationCap className="h-8 w-8 text-primary" /> :
-              <Settings className="h-8 w-8 text-accent" />
+              loginType === 'admin' ?
+              <Settings className="h-8 w-8 text-accent" /> :
+              <User className="h-8 w-8 text-green-500" />
             }
           </div>
           <CardTitle className="text-2xl capitalize">{loginType} Login</CardTitle>

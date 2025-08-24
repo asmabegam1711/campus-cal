@@ -105,57 +105,65 @@ const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
   };
 
   const downloadPDF = () => {
-    const doc = new jsPDF('l', 'mm', 'a4'); // landscape orientation
-    
-    // Add title
-    doc.setFontSize(16);
-    doc.text(`Timetable - ${timetable.className} Year ${timetable.year} Section ${timetable.section} Semester ${timetable.semester}`, 20, 20);
-    
-    // Prepare table data
-    const tableData: any[] = [];
-    const headers = ['Time/Day', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    
-    periods.forEach(period => {
-      const row = [getTimeForPeriod(period)];
-      days.forEach(day => {
-        const entries = getEntriesForSlot(day, period);
-        const displayText = entries.length > 0 ? getFormattedSubjectDisplay(entries) : 'Free';
-        row.push(displayText);
-      });
-      tableData.push(row);
+    try {
+      const doc = new jsPDF('l', 'mm', 'a4'); 
       
-      // Add break info after certain periods
-      const breakInfo = getBreakInfo(period);
-      if (breakInfo) {
-        const breakRow = [breakInfo.type.toUpperCase() + ' (' + breakInfo.duration + ')', '', '', '', '', '', ''];
-        tableData.push(breakRow);
-      }
-    });
-    
-    // Generate table using autoTable
-    (doc as any).autoTable({
-      head: [headers],
-      body: tableData,
-      startY: 30,
-      theme: 'grid',
-      styles: {
-        fontSize: 8,
-        cellPadding: 3,
-      },
-      headStyles: {
-        fillColor: [59, 130, 246],
-        textColor: 255,
-        fontStyle: 'bold',
-      },
-      alternateRowStyles: {
-        fillColor: [248, 250, 252],
-      },
-      columnStyles: {
-        0: { cellWidth: 25, fontStyle: 'bold' },
-      },
-    });
-    
-    doc.save(`timetable_${timetable.className}_Year${timetable.year}_${timetable.section}_Sem${timetable.semester}.pdf`);
+      // Add title
+      doc.setFontSize(16);
+      doc.text(`Timetable - ${timetable.className} Year ${timetable.year} Section ${timetable.section} Semester ${timetable.semester}`, 20, 20);
+      
+      // Prepare table data
+      const tableData: string[][] = [];
+      const headers = ['Time/Day', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      
+      periods.forEach(period => {
+        const row = [getTimeForPeriod(period)];
+        days.forEach(day => {
+          const entries = getEntriesForSlot(day, period);
+          const displayText = entries.length > 0 ? getFormattedSubjectDisplay(entries) : 'Free';
+          row.push(displayText);
+        });
+        tableData.push(row);
+        
+        // Add break info after certain periods
+        const breakInfo = getBreakInfo(period);
+        if (breakInfo) {
+          const breakRow = [breakInfo.type.toUpperCase() + ' (' + breakInfo.duration + ')', '', '', '', '', '', ''];
+          tableData.push(breakRow);
+        }
+      });
+      
+      // Import autoTable properly
+      const autoTable = require('jspdf-autotable').default;
+      
+      // Generate table using autoTable
+      autoTable(doc, {
+        head: [headers],
+        body: tableData,
+        startY: 30,
+        theme: 'grid',
+        styles: {
+          fontSize: 8,
+          cellPadding: 3,
+        },
+        headStyles: {
+          fillColor: [59, 130, 246],
+          textColor: 255,
+          fontStyle: 'bold',
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252],
+        },
+        columnStyles: {
+          0: { cellWidth: 25, fontStyle: 'bold' },
+        },
+      });
+      
+      doc.save(`timetable_${timetable.className}_Year${timetable.year}_${timetable.section}_Sem${timetable.semester}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF. Please try again.');
+    }
   };
 
   const generateCSV = () => {

@@ -54,20 +54,28 @@ const StudentDashboard = () => {
       return;
     }
 
-    // Try to find existing timetable in localStorage
-    const allTimetables = JSON.parse(localStorage.getItem('allTimetables') || '[]');
-    const matchingTimetable = allTimetables.find((tt: any) => 
-      tt.year === studentData.year &&
-      tt.section.toLowerCase() === studentData.section.toLowerCase() &&
-      tt.semester === studentData.semester &&
-      tt.className.toLowerCase().includes(studentData.department.toLowerCase())
-    );
+    // Try to find existing timetable in localStorage (correct key)
+    const allTimetables = JSON.parse(localStorage.getItem('timetables') || '[]');
+    console.log('Available timetables:', allTimetables);
+    console.log('Searching for:', studentData);
+    
+    const matchingTimetable = allTimetables.find((tt: any) => {
+      const yearMatch = tt.year === studentData.year;
+      const sectionMatch = tt.section.toLowerCase() === studentData.section.toLowerCase();
+      const semesterMatch = tt.semester === studentData.semester;
+      const deptMatch = tt.className.toLowerCase().includes(studentData.department.toLowerCase());
+      
+      console.log(`Checking timetable: ${tt.className}, Year: ${tt.year}, Section: ${tt.section}, Semester: ${tt.semester}`);
+      console.log(`Matches - Year: ${yearMatch}, Section: ${sectionMatch}, Semester: ${semesterMatch}, Dept: ${deptMatch}`);
+      
+      return yearMatch && sectionMatch && semesterMatch && deptMatch;
+    });
 
     if (matchingTimetable) {
       setSelectedTimetable(matchingTimetable);
       toast({
         title: "Timetable Found",
-        description: `Found timetable for ${studentData.department} Year ${studentData.year} Section ${studentData.section}`,
+        description: `Found timetable for ${matchingTimetable.className} Year ${studentData.year} Section ${studentData.section}`,
       });
     } else {
       toast({

@@ -41,13 +41,13 @@ const Login = () => {
       }));
       navigate('/admin');
     } else if (loginType === 'student') {
-      // Student login would require backend authentication
-      toast({
-        title: "Info",
-        description: "Student login requires Supabase integration for authentication",
-        variant: "default",
-      });
-      return;
+      localStorage.setItem('user', JSON.stringify({
+        id: credentials.username,
+        registerNumber: credentials.password, // Using password field as register number
+        name: credentials.username,
+        role: 'student'
+      }));
+      navigate('/student');
     }
 
     toast({
@@ -185,11 +185,13 @@ const Login = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">
+                {loginType === 'student' ? 'Register Number' : 'Password'}
+              </Label>
               <Input
                 id="password"
-                type="password"
-                placeholder="Enter your password"
+                type={loginType === 'student' ? 'text' : 'password'}
+                placeholder={loginType === 'student' ? 'Enter your register number' : 'Enter your password'}
                 value={credentials.password}
                 onChange={(e) => setCredentials(prev => ({ ...prev, password: e.target.value }))}
               />

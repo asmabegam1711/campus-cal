@@ -173,8 +173,7 @@ export const generateTimetable = (
               entry.timeSlot.day === targetDay && entry.timeSlot.period === period
             );
             // Check global schedule for faculty availability
-            const hasGlobalConflict = !globalScheduleManager.isFacultyAvailable(labSubject.faculty.id, targetDay, period) ||
-              (batchBLab && !globalScheduleManager.isFacultyAvailable(batchBLab.faculty.id, targetDay, period));
+            const hasGlobalConflict = !globalScheduleManager.isFacultyAvailable(labSubject.faculty.id, targetDay, period);
             
             return !hasLocalConflict && !hasGlobalConflict;
           });
@@ -191,9 +190,12 @@ export const generateTimetable = (
       
       // Find another lab subject for batch B (different from current lab)
       const otherLabSubjects = labSubjects.filter(lab => lab.subject.name !== labSubject.subject.name);
-      const batchBLab = otherLabSubjects.length > 0 
-        ? otherLabSubjects[index % otherLabSubjects.length] 
-        : labSubjects[(index + 1) % labSubjects.length];
+      let batchBLab;
+      if (otherLabSubjects.length > 0) {
+        batchBLab = otherLabSubjects[index % otherLabSubjects.length];
+      } else {
+        batchBLab = labSubjects[(index + 1) % labSubjects.length];
+      }
       
       labSlot.periodsNeeded.forEach((period, periodIndex) => {
         const timeSlot = timeSlots.find(slot => slot.day === targetDay && slot.period === period);

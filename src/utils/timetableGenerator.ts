@@ -1,4 +1,5 @@
 import { Faculty, TimeSlot, TimetableEntry, GeneratedTimetable, Subject } from '@/types/timetable';
+import GlobalScheduleManager from './globalScheduleManager';
 
 // Generate time slots based on college schedule
 export const generateTimeSlots = (): TimeSlot[] => {
@@ -124,6 +125,7 @@ export const generateTimetable = (
   const facultySchedule: Map<string, Set<string>> = new Map();
   const subjectWeeklyCount: Map<string, number> = new Map();
   const subjectDailyCount: Map<string, Map<string, number>> = new Map();
+  const globalScheduleManager = GlobalScheduleManager.getInstance();
   
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   
@@ -166,9 +168,15 @@ export const generateTimetable = (
           
           const canAllocate = periodsNeeded.every(period => {
             if (period > 8) return false;
-            return !entries.some(entry => 
+            // Check local schedule
+            const hasLocalConflict = entries.some(entry => 
               entry.timeSlot.day === targetDay && entry.timeSlot.period === period
             );
+            // Check global schedule for faculty availability
+            const hasGlobalConflict = !globalScheduleManager.isFacultyAvailable(labSubject.faculty.id, targetDay, period) ||
+              (batchBLab && !globalScheduleManager.isFacultyAvailable(batchBLab.faculty.id, targetDay, period));
+            
+            return !hasLocalConflict && !hasGlobalConflict;
           });
 
           if (canAllocate) {
@@ -215,9 +223,11 @@ export const generateTimetable = (
             isLabContinuation: periodIndex > 0
           });
           
-          // Mark faculty as busy
+          // Mark faculty as busy locally and globally
           facultySchedule.get(labSubject.faculty.id)?.add(`${targetDay}-${period}`);
           facultySchedule.get(batchBLab.faculty.id)?.add(`${targetDay}-${period}`);
+          globalScheduleManager.addFacultyAssignment(labSubject.faculty.id, targetDay, period, className, year, section, semester);
+          globalScheduleManager.addFacultyAssignment(batchBLab.faculty.id, targetDay, period, className, year, section, semester);
         }
       });
       
@@ -293,21 +303,23 @@ export const generateTimetable = (
           // Priority 1: New subject for period and day
           let candidates = subjectPool.filter(({faculty, subject}) => {
             const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
+            const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
             const notUsedInPeriod = !periodUsage.has(subject.name);
             const notUsedToday = !dayUsage.has(subject.name);
             const notContinuous = !isSubjectContinuous(slot, subject.name);
             
-            return isFacultyFree && notUsedInPeriod && notUsedToday && notContinuous;
+            return isFacultyFree && isGloballyFree && notUsedInPeriod && notUsedToday && notContinuous;
           });
           
           if (candidates.length === 0) {
             // Priority 2: New subject for period, avoid continuous
             candidates = subjectPool.filter(({faculty, subject}) => {
               const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
+              const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
               const notUsedInPeriod = !periodUsage.has(subject.name);
               const notContinuous = !isSubjectContinuous(slot, subject.name);
               
-              return isFacultyFree && notUsedInPeriod && notContinuous;
+              return isFacultyFree && isGloballyFree && notUsedInPeriod && notContinuous;
             });
           }
           
@@ -315,16 +327,19 @@ export const generateTimetable = (
             // Priority 3: Faculty free, avoid continuous
             candidates = subjectPool.filter(({faculty, subject}) => {
               const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
+              const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
               const notContinuous = !isSubjectContinuous(slot, subject.name);
               
-              return isFacultyFree && notContinuous;
+              return isFacultyFree && isGloballyFree && notContinuous;
             });
           }
           
           if (candidates.length === 0) {
             // Priority 4: Just faculty free
             candidates = subjectPool.filter(({faculty}) => {
-              return !facultySchedule.get(faculty.id)?.has(slotKey);
+              const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
+              const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
+              return isFacultyFree && isGloballyFree;
             });
           }
           
@@ -358,8 +373,9 @@ export const generateTimetable = (
         const selected = findBestSubject();
         
         if (selected) {
-          // Allocate the subject
+          // Allocate the subject locally and globally
           facultySchedule.get(selected.faculty.id)?.add(slotKey);
+          globalScheduleManager.addFacultyAssignment(selected.faculty.id, slot.day, slot.period, className, year, section, semester);
           dayUsage.add(selected.subject.name);
           periodUsage.add(selected.subject.name);
           subjectWeeklyCount.set(selected.subject.name, (subjectWeeklyCount.get(selected.subject.name) || 0) + 1);

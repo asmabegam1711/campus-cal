@@ -153,49 +153,75 @@ export const generateTimetable = (
 
   // Strategic lab allocation - distribute across different days with proper batch splitting
   const allocateLabs = () => {
+    if (labSubjects.length === 0) return;
+    
     const labDays = ['Monday', 'Wednesday', 'Friday']; // Distribute labs on alternate days
     let labDayIndex = 0;
     
+    console.log(`Allocating ${labSubjects.length} lab subjects for ${className}`);
+    
     // Process each lab subject individually for proper allocation
     labSubjects.forEach((labSubject, index) => {
-      const targetDay = labDays[labDayIndex % labDays.length];
+      let attempts = 0;
+      let labSlot = null;
+      let targetDay = '';
+      
+      // Try to find a suitable day and time slot
+      while (attempts < labDays.length && !labSlot) {
+        targetDay = labDays[(labDayIndex + attempts) % labDays.length];
+        
+        // Find available 3-period slots for lab
+        const findLabSlot = () => {
+          for (let startPeriod = 1; startPeriod <= 6; startPeriod++) {
+            const periodsNeeded = [startPeriod, startPeriod + 1, startPeriod + 2];
+            
+            const canAllocate = periodsNeeded.every(period => {
+              if (period > 8) return false;
+              // Check local schedule
+              const hasLocalConflict = entries.some(entry => 
+                entry.timeSlot.day === targetDay && entry.timeSlot.period === period
+              );
+              // Check global schedule for faculty availability
+              const hasGlobalConflict = !globalScheduleManager.isFacultyAvailable(labSubject.faculty.id, targetDay, period);
+              
+              return !hasLocalConflict && !hasGlobalConflict;
+            });
+
+            if (canAllocate) {
+              return { startPeriod, periodsNeeded };
+            }
+          }
+          return null;
+        };
+
+        labSlot = findLabSlot();
+        attempts++;
+      }
+      
+      if (!labSlot) {
+        console.warn(`Could not allocate lab slot for ${labSubject.subject.name}`);
+        return;
+      }
+      
       labDayIndex++;
       
-      // Find available 3-period slots for lab
-      const findLabSlot = () => {
-        for (let startPeriod = 1; startPeriod <= 6; startPeriod++) {
-          const periodsNeeded = [startPeriod, startPeriod + 1, startPeriod + 2];
-          
-          const canAllocate = periodsNeeded.every(period => {
-            if (period > 8) return false;
-            // Check local schedule
-            const hasLocalConflict = entries.some(entry => 
-              entry.timeSlot.day === targetDay && entry.timeSlot.period === period
-            );
-            // Check global schedule for faculty availability
-            const hasGlobalConflict = !globalScheduleManager.isFacultyAvailable(labSubject.faculty.id, targetDay, period);
-            
-            return !hasLocalConflict && !hasGlobalConflict;
-          });
-
-          if (canAllocate) {
-            return { startPeriod, periodsNeeded };
-          }
-        }
-        return null;
-      };
-
-      const labSlot = findLabSlot();
-      if (!labSlot) return;
-      
       // Find another lab subject for batch B (different from current lab)
-      const otherLabSubjects = labSubjects.filter(lab => lab.subject.name !== labSubject.subject.name);
-      let batchBLab;
+      const otherLabSubjects = labSubjects.filter(lab => 
+        lab.subject.name !== labSubject.subject.name && 
+        lab.faculty.id !== labSubject.faculty.id
+      );
+      
+      let batchBLab = labSubject; // Default to same subject if no other available
       if (otherLabSubjects.length > 0) {
-        batchBLab = otherLabSubjects[index % otherLabSubjects.length];
-      } else {
-        batchBLab = labSubjects[(index + 1) % labSubjects.length];
+        // Select the best available lab for batch B
+        batchBLab = otherLabSubjects.find(lab => 
+          labSlot.periodsNeeded.every(period => 
+            globalScheduleManager.isFacultyAvailable(lab.faculty.id, targetDay, period)
+          )
+        ) || otherLabSubjects[index % otherLabSubjects.length];
       }
+      
+      console.log(`Allocating lab: ${labSubject.subject.name} (Batch A) & ${batchBLab.subject.name} (Batch B) on ${targetDay}`);
       
       labSlot.periodsNeeded.forEach((period, periodIndex) => {
         const timeSlot = timeSlots.find(slot => slot.day === targetDay && slot.period === period);
@@ -213,29 +239,35 @@ export const generateTimetable = (
             isLabContinuation: periodIndex > 0
           });
           
-          // Batch B - Different lab subject
-          entries.push({
-            id: `${targetDay}-${period}-${batchBLab.faculty.id}-B`,
-            timeSlot,
-            facultyId: batchBLab.faculty.id,
-            facultyName: batchBLab.faculty.name,
-            subject: batchBLab.subject.name,
-            subjectType: 'lab',
-            batch: 'B',
-            isLabContinuation: periodIndex > 0
-          });
+          // Batch B - Different lab subject (only if different faculty)
+          if (batchBLab.faculty.id !== labSubject.faculty.id) {
+            entries.push({
+              id: `${targetDay}-${period}-${batchBLab.faculty.id}-B`,
+              timeSlot,
+              facultyId: batchBLab.faculty.id,
+              facultyName: batchBLab.faculty.name,
+              subject: batchBLab.subject.name,
+              subjectType: 'lab',
+              batch: 'B',
+              isLabContinuation: periodIndex > 0
+            });
+            
+            // Mark batch B faculty as busy
+            facultySchedule.get(batchBLab.faculty.id)?.add(`${targetDay}-${period}`);
+            globalScheduleManager.addFacultyAssignment(batchBLab.faculty.id, targetDay, period, className, year, section, semester);
+          }
           
-          // Mark faculty as busy locally and globally
+          // Mark batch A faculty as busy
           facultySchedule.get(labSubject.faculty.id)?.add(`${targetDay}-${period}`);
-          facultySchedule.get(batchBLab.faculty.id)?.add(`${targetDay}-${period}`);
           globalScheduleManager.addFacultyAssignment(labSubject.faculty.id, targetDay, period, className, year, section, semester);
-          globalScheduleManager.addFacultyAssignment(batchBLab.faculty.id, targetDay, period, className, year, section, semester);
         }
       });
       
       // Update subject counts
       subjectWeeklyCount.set(labSubject.subject.name, (subjectWeeklyCount.get(labSubject.subject.name) || 0) + 1);
-      subjectWeeklyCount.set(batchBLab.subject.name, (subjectWeeklyCount.get(batchBLab.subject.name) || 0) + 1);
+      if (batchBLab.faculty.id !== labSubject.faculty.id) {
+        subjectWeeklyCount.set(batchBLab.subject.name, (subjectWeeklyCount.get(batchBLab.subject.name) || 0) + 1);
+      }
     });
   };
 
@@ -417,7 +449,13 @@ export const generateTimetable = (
     year,
     section,
     semester,
-    entries,
+    entries: entries.sort((a, b) => {
+      // Sort by day then by period for better display
+      const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const dayComparison = dayOrder.indexOf(a.timeSlot.day) - dayOrder.indexOf(b.timeSlot.day);
+      if (dayComparison !== 0) return dayComparison;
+      return a.timeSlot.period - b.timeSlot.period;
+    }),
     createdAt: new Date(),
     createdBy
   };

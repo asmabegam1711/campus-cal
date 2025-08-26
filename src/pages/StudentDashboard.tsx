@@ -59,14 +59,27 @@ const StudentDashboard = () => {
     console.log('Available timetables:', allTimetables);
     console.log('Searching for:', studentData);
     
+    if (allTimetables.length === 0) {
+      toast({
+        title: "⚠️ No Timetables Available",
+        description: "No timetables have been created yet. Please contact your faculty to generate timetables for your class.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     const matchingTimetable = allTimetables.find((tt: any) => {
+      // Add null/undefined checks to prevent errors
+      if (!tt || typeof tt !== 'object') return false;
+      if (!tt.section || !tt.className || tt.year === undefined || tt.semester === undefined) return false;
+      
       const yearMatch = tt.year === studentData.year;
-      const sectionMatch = tt.section.toLowerCase().trim() === studentData.section.toLowerCase().trim();
+      const sectionMatch = tt.section.toString().toLowerCase().trim() === studentData.section.toLowerCase().trim();
       const semesterMatch = tt.semester === studentData.semester;
       
-      // More flexible department matching
+      // More flexible department matching with null checks
       const dept = studentData.department.toLowerCase().trim();
-      const className = tt.className.toLowerCase().trim();
+      const className = tt.className.toString().toLowerCase().trim();
       const deptMatch = className.includes(dept) || 
                        dept.includes(className) ||
                        // Common abbreviation matching

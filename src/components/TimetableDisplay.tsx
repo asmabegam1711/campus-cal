@@ -195,7 +195,7 @@ const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
                 {timetable.className} - Year {timetable.year} - Section {timetable.section} - Semester {timetable.semester}
               </CardTitle>
               <CardDescription>
-                Generated on {timetable.createdAt.toLocaleDateString()}
+                Generated on {new Date(timetable.createdAt).toLocaleDateString()}
               </CardDescription>
             </div>
             <div className="flex gap-2">

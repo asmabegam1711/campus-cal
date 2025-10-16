@@ -63,6 +63,12 @@ const Login = () => {
       case "student":
         navigate("/student");
         break;
+      default:
+        toast({
+          title: "Role Assignment Pending",
+          description: "Please wait for an administrator to assign your role.",
+          variant: "destructive",
+        });
     }
   };
 
@@ -157,14 +163,14 @@ const Login = () => {
       <div className="min-h-screen flex flex-col">
         {/* Hero Section with College Image */}
         <div 
-          className="relative h-64 bg-cover bg-center"
+          className="relative min-h-[60vh] bg-cover bg-center"
           style={{ backgroundImage: `url(${collegeHero})` }}
         >
           <div className="absolute inset-0 bg-gradient-to-b from-black/50 to-black/30" />
-          <div className="relative h-full flex items-center justify-center">
-            <div className="text-center text-white">
-              <h1 className="text-4xl font-bold mb-2">College Timetable System</h1>
-              <p className="text-lg">Efficient scheduling for modern education</p>
+          <div className="relative h-full flex items-center justify-center px-4 py-16">
+            <div className="text-center text-white max-w-3xl">
+              <h1 className="text-5xl md:text-6xl font-bold mb-4">College Timetable System</h1>
+              <p className="text-xl md:text-2xl">Efficient scheduling for modern education</p>
             </div>
           </div>
         </div>

@@ -37,16 +37,17 @@ export const signUp = async (
 
   if (profileError) throw profileError;
 
-  // Create role (only admins can do this, so for now we'll try and catch the error)
-  try {
-    await supabase
-      .from('user_roles')
-      .insert({
-        user_id: authData.user.id,
-        role,
-      });
-  } catch (error) {
-    console.log("Role assignment will be done by admin");
+  // Create role - users can insert their own role during signup
+  const { error: roleError } = await supabase
+    .from('user_roles')
+    .insert({
+      user_id: authData.user.id,
+      role,
+    });
+
+  if (roleError) {
+    console.error("Role assignment error:", roleError);
+    throw new Error("Failed to assign role. Please contact an administrator.");
   }
 
   return authData;

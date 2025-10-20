@@ -50,7 +50,7 @@ const Login = () => {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [navigate, toast]);
 
   const navigateToRole = (role: UserRole) => {
     switch (role) {
@@ -160,32 +160,28 @@ const Login = () => {
 
   if (!loginType) {
     return (
-      <div className="min-h-screen flex flex-col">
-        {/* Hero Section with College Image */}
-        <div 
-          className="relative min-h-[60vh] bg-cover bg-center"
-          style={{ backgroundImage: `url(${collegeHero})` }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-b from-black/50 to-black/30" />
-          <div className="relative h-full flex items-center justify-center px-4 py-16">
-            <div className="text-center text-white max-w-3xl">
-              <h1 className="text-5xl md:text-6xl font-bold mb-4">College Timetable System</h1>
-              <p className="text-xl md:text-2xl">Efficient scheduling for modern education</p>
-            </div>
+      <div 
+        className="min-h-screen bg-cover bg-center flex items-center justify-center p-4"
+        style={{ backgroundImage: `url(${collegeHero})` }}
+      >
+        <div className="absolute inset-0 bg-black/40" />
+        <div className="relative z-10 w-full max-w-6xl">
+          {/* Hero Text */}
+          <div className="text-center text-white mb-12">
+            <h1 className="text-5xl md:text-7xl font-bold mb-4 drop-shadow-lg">College Timetable System</h1>
+            <p className="text-xl md:text-3xl drop-shadow-md">Efficient scheduling for modern education</p>
           </div>
-        </div>
 
-        {/* Role Selection */}
-        <div className="flex-1 flex items-center justify-center p-8 bg-background">
-          <div className="w-full max-w-5xl">
-            <h2 className="text-3xl font-bold text-center mb-8">Select Your Role</h2>
+          {/* Role Selection */}
+          <div className="w-full">
+            <h2 className="text-3xl font-bold text-center mb-8 text-white drop-shadow-lg">Select Your Role</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {roleCards.map((card) => {
                 const Icon = card.icon;
                 return (
                   <Card
                     key={card.type}
-                    className="cursor-pointer hover:shadow-lg transition-all hover:scale-105"
+                    className="cursor-pointer hover:shadow-2xl transition-all hover:scale-105 bg-white/95 backdrop-blur-sm"
                     onClick={() => setLoginType(card.type)}
                   >
                     <CardHeader>
@@ -206,8 +202,12 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-md">
+    <div 
+      className="min-h-screen flex items-center justify-center p-4 bg-cover bg-center"
+      style={{ backgroundImage: `url(${collegeHero})` }}
+    >
+      <div className="absolute inset-0 bg-black/40" />
+      <Card className="w-full max-w-md relative z-10 bg-white/95 backdrop-blur-sm">
         <CardHeader>
           <Button
             variant="ghost"

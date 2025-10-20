@@ -10,12 +10,9 @@ import { Faculty, GeneratedTimetable, Subject } from '@/types/timetable';
 import { generateTimetable } from '@/utils/timetableGenerator';
 import { useToast } from '@/hooks/use-toast';
 import TimetableDisplay from '@/components/TimetableDisplay';
-import { supabase } from '@/integrations/supabase/client';
-import { getUserRole, signOut } from '@/utils/auth';
 
 const FacultyDashboard = () => {
   const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [newFaculty, setNewFaculty] = useState({ 
     name: '', 
@@ -31,50 +28,18 @@ const FacultyDashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session?.user) {
-          navigate('/');
-          return;
-        }
-
-        const role = await getUserRole(session.user.id);
-        
-        if (role !== 'faculty') {
-          toast({
-            title: "Access Denied",
-            description: "You don't have faculty access",
-            variant: "destructive",
-          });
-          navigate('/');
-          return;
-        }
-
-        // Get profile data
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-
-        setUser({
-          id: session.user.id,
-          email: session.user.email,
-          name: profile?.full_name || profile?.username || 'Faculty',
-          role: 'faculty'
-        });
-      } catch (error) {
-        console.error('Auth check error:', error);
-        navigate('/');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, [navigate, toast]);
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      navigate('/');
+      return;
+    }
+    const parsedUser = JSON.parse(userData);
+    if (parsedUser.role !== 'faculty') {
+      navigate('/');
+      return;
+    }
+    setUser(parsedUser);
+  }, [navigate]);
 
   const addSubject = () => {
     setNewFaculty(prev => ({
@@ -181,26 +146,13 @@ const FacultyDashboard = () => {
     });
   };
 
-  const logout = async () => {
-    try {
-      await signOut();
-      navigate('/');
-    } catch (error) {
-      console.error('Logout error:', error);
-      toast({
-        title: "Error",
-        description: "Failed to logout",
-        variant: "destructive",
-      });
-    }
+  const logout = () => {
+    localStorage.removeItem('user');
+    navigate('/');
   };
 
-  if (loading) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
-  }
-
   if (!user) {
-    return null;
+    return <div>Loading...</div>;
   }
 
   return (

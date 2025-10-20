@@ -8,35 +8,70 @@ import { Settings, LogOut, Calendar, Users, Clock, Trash2 } from 'lucide-react';
 import { GeneratedTimetable } from '@/types/timetable';
 import { useToast } from '@/hooks/use-toast';
 import TimetableDisplay from '@/components/TimetableDisplay';
+import { supabase } from '@/integrations/supabase/client';
+import { getUserRole, signOut } from '@/utils/auth';
 
 const AdminDashboard = () => {
   const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [timetables, setTimetables] = useState<GeneratedTimetable[]>([]);
   const [selectedTimetable, setSelectedTimetable] = useState<GeneratedTimetable | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (!userData) {
-      navigate('/');
-      return;
-    }
-    const parsedUser = JSON.parse(userData);
-    if (parsedUser.role !== 'admin') {
-      navigate('/');
-      return;
-    }
-    setUser(parsedUser);
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.user) {
+          navigate('/');
+          return;
+        }
 
-    // Load timetables from localStorage
-    const savedTimetables = JSON.parse(localStorage.getItem('timetables') || '[]');
-    const parsedTimetables = savedTimetables.map((tt: any) => ({
-      ...tt,
-      createdAt: new Date(tt.createdAt)
-    }));
-    setTimetables(parsedTimetables);
-  }, [navigate]);
+        const role = await getUserRole(session.user.id);
+        
+        if (role !== 'admin') {
+          toast({
+            title: "Access Denied",
+            description: "You don't have admin access",
+            variant: "destructive",
+          });
+          navigate('/');
+          return;
+        }
+
+        // Get profile data
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        setUser({
+          id: session.user.id,
+          email: session.user.email,
+          name: profile?.full_name || profile?.username || 'Admin',
+          role: 'admin'
+        });
+
+        // Load timetables from localStorage
+        const savedTimetables = JSON.parse(localStorage.getItem('timetables') || '[]');
+        const parsedTimetables = savedTimetables.map((tt: any) => ({
+          ...tt,
+          createdAt: new Date(tt.createdAt)
+        }));
+        setTimetables(parsedTimetables);
+      } catch (error) {
+        console.error('Auth check error:', error);
+        navigate('/');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [navigate, toast]);
 
   const deleteTimetable = (timetableId: string) => {
     const updatedTimetables = timetables.filter(tt => tt.id !== timetableId);
@@ -53,13 +88,26 @@ const AdminDashboard = () => {
     });
   };
 
-  const logout = () => {
-    localStorage.removeItem('user');
-    navigate('/');
+  const logout = async () => {
+    try {
+      await signOut();
+      navigate('/');
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to logout",
+        variant: "destructive",
+      });
+    }
   };
 
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+  }
+
   if (!user) {
-    return <div>Loading...</div>;
+    return null;
   }
 
   return (

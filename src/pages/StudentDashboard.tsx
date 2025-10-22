@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { LogOut, Download, User, GraduationCap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import TimetableDisplay from '@/components/TimetableDisplay';
+import { supabase } from '@/integrations/supabase/client';
+import { getUserRole, signOut } from '@/utils/auth';
 
 interface StudentData {
   year: number;
@@ -29,19 +31,35 @@ const StudentDashboard = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (!userData) {
-      navigate('/');
-      return;
-    }
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        navigate('/');
+        return;
+      }
+      
+      const role = await getUserRole(session.user.id);
+      if (role !== 'student') {
+        navigate('/');
+        return;
+      }
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+      
+      setUser({
+        id: session.user.id,
+        name: profile?.full_name || session.user.email,
+        email: session.user.email,
+        registerNumber: profile?.register_number || 'N/A',
+        role: 'student'
+      });
+    };
     
-    const parsedUser = JSON.parse(userData);
-    if (parsedUser.role !== 'student') {
-      navigate('/');
-      return;
-    }
-    
-    setUser(parsedUser);
+    checkAuth();
   }, [navigate]);
 
   const findTimetable = () => {
@@ -116,8 +134,8 @@ const StudentDashboard = () => {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('user');
+  const logout = async () => {
+    await signOut();
     navigate('/');
   };
 

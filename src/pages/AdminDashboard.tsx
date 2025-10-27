@@ -8,8 +8,6 @@ import { Settings, LogOut, Calendar, Users, Clock, Trash2 } from 'lucide-react';
 import { GeneratedTimetable } from '@/types/timetable';
 import { useToast } from '@/hooks/use-toast';
 import TimetableDisplay from '@/components/TimetableDisplay';
-import { supabase } from '@/integrations/supabase/client';
-import { getUserRole, signOut } from '@/utils/auth';
 
 const AdminDashboard = () => {
   const [user, setUser] = useState<any>(null);
@@ -19,42 +17,25 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        navigate('/');
-        return;
-      }
-      
-      const role = await getUserRole(session.user.id);
-      if (role !== 'admin') {
-        navigate('/');
-        return;
-      }
-      
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-      
-      setUser({
-        id: session.user.id,
-        name: profile?.full_name || session.user.email,
-        email: session.user.email,
-        role: 'admin'
-      });
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      navigate('/');
+      return;
+    }
+    const parsedUser = JSON.parse(userData);
+    if (parsedUser.role !== 'admin') {
+      navigate('/');
+      return;
+    }
+    setUser(parsedUser);
 
-      // Load timetables from localStorage
-      const savedTimetables = JSON.parse(localStorage.getItem('timetables') || '[]');
-      const parsedTimetables = savedTimetables.map((tt: any) => ({
-        ...tt,
-        createdAt: new Date(tt.createdAt)
-      }));
-      setTimetables(parsedTimetables);
-    };
-    
-    checkAuth();
+    // Load timetables from localStorage
+    const savedTimetables = JSON.parse(localStorage.getItem('timetables') || '[]');
+    const parsedTimetables = savedTimetables.map((tt: any) => ({
+      ...tt,
+      createdAt: new Date(tt.createdAt)
+    }));
+    setTimetables(parsedTimetables);
   }, [navigate]);
 
   const deleteTimetable = (timetableId: string) => {
@@ -72,8 +53,8 @@ const AdminDashboard = () => {
     });
   };
 
-  const logout = async () => {
-    await signOut();
+  const logout = () => {
+    localStorage.removeItem('user');
     navigate('/');
   };
 

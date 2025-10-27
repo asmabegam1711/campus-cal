@@ -8,8 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { LogOut, Download, User, GraduationCap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import TimetableDisplay from '@/components/TimetableDisplay';
-import { supabase } from '@/integrations/supabase/client';
-import { getUserRole, signOut } from '@/utils/auth';
 
 interface StudentData {
   year: number;
@@ -31,35 +29,19 @@ const StudentDashboard = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        navigate('/');
-        return;
-      }
-      
-      const role = await getUserRole(session.user.id);
-      if (role !== 'student') {
-        navigate('/');
-        return;
-      }
-      
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-      
-      setUser({
-        id: session.user.id,
-        name: profile?.full_name || session.user.email,
-        email: session.user.email,
-        registerNumber: profile?.register_number || 'N/A',
-        role: 'student'
-      });
-    };
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      navigate('/');
+      return;
+    }
     
-    checkAuth();
+    const parsedUser = JSON.parse(userData);
+    if (parsedUser.role !== 'student') {
+      navigate('/');
+      return;
+    }
+    
+    setUser(parsedUser);
   }, [navigate]);
 
   const findTimetable = () => {
@@ -77,27 +59,14 @@ const StudentDashboard = () => {
     console.log('Available timetables:', allTimetables);
     console.log('Searching for:', studentData);
     
-    if (allTimetables.length === 0) {
-      toast({
-        title: "⚠️ No Timetables Available",
-        description: "No timetables have been created yet. Please contact your faculty to generate timetables for your class.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
     const matchingTimetable = allTimetables.find((tt: any) => {
-      // Add null/undefined checks to prevent errors
-      if (!tt || typeof tt !== 'object') return false;
-      if (!tt.section || !tt.className || tt.year === undefined || tt.semester === undefined) return false;
-      
       const yearMatch = tt.year === studentData.year;
-      const sectionMatch = tt.section.toString().toLowerCase().trim() === studentData.section.toLowerCase().trim();
+      const sectionMatch = tt.section.toLowerCase().trim() === studentData.section.toLowerCase().trim();
       const semesterMatch = tt.semester === studentData.semester;
       
-      // More flexible department matching with null checks
+      // More flexible department matching
       const dept = studentData.department.toLowerCase().trim();
-      const className = tt.className.toString().toLowerCase().trim();
+      const className = tt.className.toLowerCase().trim();
       const deptMatch = className.includes(dept) || 
                        dept.includes(className) ||
                        // Common abbreviation matching
@@ -134,8 +103,8 @@ const StudentDashboard = () => {
     }
   };
 
-  const logout = async () => {
-    await signOut();
+  const logout = () => {
+    localStorage.removeItem('user');
     navigate('/');
   };
 

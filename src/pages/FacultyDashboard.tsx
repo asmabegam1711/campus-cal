@@ -10,8 +10,6 @@ import { Faculty, GeneratedTimetable, Subject } from '@/types/timetable';
 import { generateTimetable } from '@/utils/timetableGenerator';
 import { useToast } from '@/hooks/use-toast';
 import TimetableDisplay from '@/components/TimetableDisplay';
-import { supabase } from '@/integrations/supabase/client';
-import { getUserRole, signOut } from '@/utils/auth';
 
 const FacultyDashboard = () => {
   const [user, setUser] = useState<any>(null);
@@ -30,34 +28,17 @@ const FacultyDashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        navigate('/');
-        return;
-      }
-      
-      const role = await getUserRole(session.user.id);
-      if (role !== 'faculty') {
-        navigate('/');
-        return;
-      }
-      
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-      
-      setUser({
-        id: session.user.id,
-        name: profile?.full_name || session.user.email,
-        email: session.user.email,
-        role: 'faculty'
-      });
-    };
-    
-    checkAuth();
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      navigate('/');
+      return;
+    }
+    const parsedUser = JSON.parse(userData);
+    if (parsedUser.role !== 'faculty') {
+      navigate('/');
+      return;
+    }
+    setUser(parsedUser);
   }, [navigate]);
 
   const addSubject = () => {
@@ -165,8 +146,8 @@ const FacultyDashboard = () => {
     });
   };
 
-  const logout = async () => {
-    await signOut();
+  const logout = () => {
+    localStorage.removeItem('user');
     navigate('/');
   };
 

@@ -40,6 +40,17 @@ const Login = () => {
       if (event === 'SIGNED_IN' && session?.user) {
         const role = await getUserRole(session.user.id);
         if (role) {
+          // Check if user is logging in through the correct portal
+          if (loginType && role !== loginType) {
+            await supabase.auth.signOut();
+            toast({
+              title: "Error",
+              description: `This account is registered as ${role}. Please use the ${role} login.`,
+              variant: "destructive",
+            });
+            setLoading(false);
+            return;
+          }
           navigate(`/${role}`);
         }
       }

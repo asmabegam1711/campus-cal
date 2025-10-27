@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { GraduationCap, Settings, BookOpen, Calendar, User } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import loginHero from '@/assets/login-hero.jpg';
+import loginHero from '@/assets/college-campus.jpg';
 
 const Login = () => {
   const [loginType, setLoginType] = useState<'faculty' | 'admin' | 'student' | null>(null);

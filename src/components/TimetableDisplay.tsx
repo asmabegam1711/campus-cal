@@ -67,7 +67,12 @@ const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
     return null;
   };
 
-  const getSubjectColor = (subject: string, isLab: boolean = false) => {
+  const getSubjectColor = (subject: string, isLab: boolean = false, isClub: boolean = false) => {
+    // Special color for club activities
+    if (isClub || subject === 'Club Activity') {
+      return 'bg-amber-100 text-amber-900 border-amber-300';
+    }
+    
     const colors = [
       'bg-blue-100 text-blue-800 border-blue-200',
       'bg-green-100 text-green-800 border-green-200', 
@@ -271,7 +276,8 @@ const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
                   const entries = getEntriesForSlot(day, period);
                   const displayText = getFormattedSubjectDisplay(entries);
                   const isLab = entries.length > 0 && entries[0].subjectType === 'lab';
-                  const colorClass = displayText !== 'Free' ? getSubjectColor(displayText, isLab) : 'bg-gray-100 text-gray-500';
+                  const isClub = entries.length > 0 && (entries[0].isClubSession || entries[0].subject === 'Club Activity');
+                  const colorClass = displayText !== 'Free' ? getSubjectColor(displayText, isLab, isClub) : 'bg-gray-100 text-gray-500';
                   
                   return (
                     <React.Fragment key={`${day}-${period}`}>

@@ -241,6 +241,49 @@ export const generateTimetable = (
 
   allocateLabs();
 
+  // Allocate 2-hour club session on Friday or Saturday
+  const allocateClubSession = () => {
+    const clubDays = ['Friday', 'Saturday'];
+    
+    for (const clubDay of clubDays) {
+      // Try to find 2 consecutive periods for club
+      for (let startPeriod = 1; startPeriod <= 7; startPeriod++) {
+        const periodsNeeded = [startPeriod, startPeriod + 1];
+        
+        const canAllocate = periodsNeeded.every(period => {
+          if (period > 8) return false;
+          // Check if slot is free
+          return !entries.some(entry => 
+            entry.timeSlot.day === clubDay && entry.timeSlot.period === period
+          );
+        });
+
+        if (canAllocate) {
+          // Allocate club for both periods
+          periodsNeeded.forEach((period, index) => {
+            const timeSlot = timeSlots.find(slot => slot.day === clubDay && slot.period === period);
+            
+            if (timeSlot) {
+              entries.push({
+                id: `${clubDay}-${period}-club`,
+                timeSlot,
+                facultyId: 'club-coordinator',
+                facultyName: 'Club Coordinator',
+                subject: 'Club Activity',
+                subjectType: 'theory',
+                isClubSession: true,
+                isClubContinuation: index > 0
+              });
+            }
+          });
+          return; // Club allocated, exit
+        }
+      }
+    }
+  };
+
+  allocateClubSession();
+
   // Smart theory allocation with better distribution
   const allocateTheorySubjects = () => {
     const availableSlots = timeSlots.filter(slot => {

@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      faculty_members: {
+        Row: {
+          created_at: string | null
+          faculty_id: string
+          faculty_name: string
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          faculty_id: string
+          faculty_name: string
+          id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          faculty_id?: string
+          faculty_name?: string
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string

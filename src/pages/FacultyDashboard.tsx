@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Faculty, GeneratedTimetable, Subject } from '@/types/timetable';
 import { generateTimetable } from '@/utils/timetableGenerator';
 import { useToast } from '@/hooks/use-toast';
 import TimetableDisplay from '@/components/TimetableDisplay';
+import { supabase } from '@/integrations/supabase/client';
 
 const FacultyDashboard = () => {
   const [user, setUser] = useState<any>(null);
@@ -24,6 +25,10 @@ const FacultyDashboard = () => {
   const [section, setSection] = useState('A');
   const [semester, setSemester] = useState<number>(1);
   const [generatedTimetable, setGeneratedTimetable] = useState<GeneratedTimetable | null>(null);
+  const [storedFaculties, setStoredFaculties] = useState<Array<{ faculty_id: string; faculty_name: string }>>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredSuggestions, setFilteredSuggestions] = useState<Array<{ faculty_id: string; faculty_name: string }>>([]);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -39,7 +44,52 @@ const FacultyDashboard = () => {
       return;
     }
     setUser(parsedUser);
+    fetchStoredFaculties();
   }, [navigate]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const fetchStoredFaculties = async () => {
+    const { data, error } = await supabase
+      .from('faculty_members')
+      .select('faculty_id, faculty_name')
+      .order('faculty_name');
+    
+    if (!error && data) {
+      setStoredFaculties(data);
+    }
+  };
+
+  const handleFacultyNameChange = (value: string) => {
+    setNewFaculty(prev => ({ ...prev, name: value, id: '' }));
+    
+    if (value.trim().length > 0) {
+      const filtered = storedFaculties.filter(f => 
+        f.faculty_name.toLowerCase().startsWith(value.toLowerCase())
+      );
+      setFilteredSuggestions(filtered);
+      setShowSuggestions(filtered.length > 0);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+
+  const selectFaculty = (faculty: { faculty_id: string; faculty_name: string }) => {
+    setNewFaculty(prev => ({ 
+      ...prev, 
+      name: faculty.faculty_name, 
+      id: faculty.faculty_id 
+    }));
+    setShowSuggestions(false);
+  };
 
   const addSubject = () => {
     setNewFaculty(prev => ({
@@ -64,7 +114,7 @@ const FacultyDashboard = () => {
     }));
   };
 
-  const addFaculty = () => {
+  const addFaculty = async () => {
     if (!newFaculty.name || !newFaculty.id) {
       toast({
         title: "Error",
@@ -102,6 +152,22 @@ const FacultyDashboard = () => {
     };
 
     setFaculties(prev => [...prev, faculty]);
+    
+    // Store faculty in database if not already exists
+    const facultyExists = storedFaculties.find(f => f.faculty_id === newFaculty.id);
+    if (!facultyExists) {
+      const { error } = await supabase
+        .from('faculty_members')
+        .insert({
+          faculty_id: newFaculty.id,
+          faculty_name: newFaculty.name
+        });
+      
+      if (!error) {
+        await fetchStoredFaculties();
+      }
+    }
+    
     setNewFaculty({ name: '', id: '', subjects: [{ name: '', type: 'theory', periodsPerWeek: 4 }] });
     
     toast({
@@ -188,20 +254,42 @@ const FacultyDashboard = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="relative">
                   <Label htmlFor="facultyName">Faculty Name</Label>
                   <Input
                     id="facultyName"
                     placeholder="Enter name"
                     value={newFaculty.name}
-                    onChange={(e) => setNewFaculty(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) => handleFacultyNameChange(e.target.value)}
+                    onFocus={() => {
+                      if (newFaculty.name.trim().length > 0 && filteredSuggestions.length > 0) {
+                        setShowSuggestions(true);
+                      }
+                    }}
                   />
+                  {showSuggestions && filteredSuggestions.length > 0 && (
+                    <div 
+                      ref={suggestionsRef}
+                      className="absolute z-50 w-full mt-1 bg-background border border-input rounded-md shadow-lg max-h-48 overflow-y-auto"
+                    >
+                      {filteredSuggestions.map((faculty) => (
+                        <div
+                          key={faculty.faculty_id}
+                          className="px-3 py-2 hover:bg-accent cursor-pointer flex justify-between items-center"
+                          onClick={() => selectFaculty(faculty)}
+                        >
+                          <span className="font-medium">{faculty.faculty_name}</span>
+                          <span className="text-xs text-muted-foreground">{faculty.faculty_id}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="facultyId">Faculty ID</Label>
                   <Input
                     id="facultyId"
-                    placeholder="Enter ID"
+                    placeholder="Auto-filled or enter ID"
                     value={newFaculty.id}
                     onChange={(e) => setNewFaculty(prev => ({ ...prev, id: e.target.value }))}
                   />

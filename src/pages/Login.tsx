@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { GraduationCap, Settings, BookOpen, Calendar, User } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import loginHero from '@/assets/college-campus.jpg';
 
 const Login = () => {
   const [loginType, setLoginType] = useState<'faculty' | 'admin' | 'student' | null>(null);
@@ -59,19 +58,8 @@ const Login = () => {
 
   if (!loginType) {
     return (
-      <div className="min-h-screen relative flex items-center justify-center p-4">
-        {/* Background Image with Overlay */}
-        <div 
-          className="absolute inset-0 z-0"
-          style={{
-            backgroundImage: `url(${loginHero})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-br from-background/95 to-background/90 backdrop-blur-sm" />
-        </div>
-        <div className="w-full max-w-4xl relative z-10">
+      <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4">
+        <div className="w-full max-w-4xl">
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
               <div className="p-3 bg-gradient-to-r from-primary to-accent rounded-full">
@@ -168,19 +156,8 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-4">
-      {/* Background Image with Overlay */}
-      <div 
-        className="absolute inset-0 z-0"
-        style={{
-          backgroundImage: `url(${loginHero})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        <div className="absolute inset-0 bg-gradient-to-br from-background/95 to-background/90 backdrop-blur-sm" />
-      </div>
-      <Card className="w-full max-w-md shadow-lg relative z-10">
+    <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4">
+      <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="text-center">
           <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
             {loginType === 'faculty' ? 

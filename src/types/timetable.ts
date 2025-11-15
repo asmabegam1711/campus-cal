@@ -28,8 +28,6 @@ export interface TimetableEntry {
   batch?: 'A' | 'B';
   classRoom?: string;
   isLabContinuation?: boolean;
-  isClubSession?: boolean;
-  isClubContinuation?: boolean;
 }
 
 export interface GeneratedTimetable {

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Trash2, LogOut, GraduationCap, BookOpen } from 'lucide-react';
 import { Faculty, GeneratedTimetable, Subject } from '@/types/timetable';
 import { generateTimetable } from '@/utils/timetableGenerator';
@@ -14,6 +15,7 @@ import TimetableDisplay from '@/components/TimetableDisplay';
 const FacultyDashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [faculties, setFaculties] = useState<Faculty[]>([]);
+  const [selectedFacultyIds, setSelectedFacultyIds] = useState<Set<string>>(new Set());
   const [newFaculty, setNewFaculty] = useState({ 
     name: '', 
     id: '', 
@@ -102,6 +104,7 @@ const FacultyDashboard = () => {
     };
 
     setFaculties(prev => [...prev, faculty]);
+    setSelectedFacultyIds(prev => new Set([...prev, faculty.id])); // Auto-select newly added faculty
     setNewFaculty({ name: '', id: '', subjects: [{ name: '', type: 'theory', periodsPerWeek: 4 }] });
     
     toast({
@@ -112,6 +115,23 @@ const FacultyDashboard = () => {
 
   const removeFaculty = (id: string) => {
     setFaculties(prev => prev.filter(faculty => faculty.id !== id));
+    setSelectedFacultyIds(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(id);
+      return newSet;
+    });
+  };
+
+  const toggleFacultySelection = (id: string) => {
+    setSelectedFacultyIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
   };
 
   const generateNewTimetable = () => {
@@ -119,6 +139,15 @@ const FacultyDashboard = () => {
       toast({
         title: "Error",
         description: "Please add at least one faculty member",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (selectedFacultyIds.size === 0) {
+      toast({
+        title: "Error",
+        description: "Please select at least one faculty member",
         variant: "destructive",
       });
       return;
@@ -133,7 +162,8 @@ const FacultyDashboard = () => {
       return;
     }
 
-    const timetable = generateTimetable(faculties, className, year, section, semester, user?.name || 'Faculty');
+    const selectedFaculties = faculties.filter(f => selectedFacultyIds.has(f.id));
+    const timetable = generateTimetable(selectedFaculties, className, year, section, semester, user?.name || 'Faculty');
     setGeneratedTimetable(timetable);
 
     // Save to localStorage for admin view
@@ -342,11 +372,16 @@ const FacultyDashboard = () => {
             <CardContent className="space-y-4">
 
               <div>
-                <Label>Added Faculty ({faculties.length})</Label>
+                <Label>Added Faculty ({faculties.length}) - {selectedFacultyIds.size} selected</Label>
                 <div className="max-h-32 overflow-y-auto space-y-2 mt-2">
                   {faculties.map((faculty) => (
-                    <div key={faculty.id} className="flex justify-between items-center p-2 bg-muted rounded-lg">
-                      <div>
+                    <div key={faculty.id} className="flex items-start gap-2 p-2 bg-muted rounded-lg">
+                      <Checkbox
+                        checked={selectedFacultyIds.has(faculty.id)}
+                        onCheckedChange={() => toggleFacultySelection(faculty.id)}
+                        className="mt-1"
+                      />
+                      <div className="flex-1">
                         <p className="font-medium">{faculty.name}</p>
                         <div className="flex gap-1 flex-wrap">
                           {faculty.subjects.map((subject, idx) => (
@@ -375,7 +410,7 @@ const FacultyDashboard = () => {
               <Button 
                 onClick={generateNewTimetable} 
                 className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-none shadow-lg"
-                disabled={faculties.length === 0 || !className}
+                disabled={faculties.length === 0 || selectedFacultyIds.size === 0 || !className}
               >
                 🎯 Generate Smart Timetable
               </Button>

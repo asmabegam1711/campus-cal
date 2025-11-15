@@ -53,6 +53,15 @@ const AdminDashboard = () => {
     });
   };
 
+  const handleTimetableUpdate = (updatedTimetable: GeneratedTimetable) => {
+    const updatedTimetables = timetables.map(tt => 
+      tt.id === updatedTimetable.id ? updatedTimetable : tt
+    );
+    setTimetables(updatedTimetables);
+    setSelectedTimetable(updatedTimetable);
+    localStorage.setItem('timetables', JSON.stringify(updatedTimetables));
+  };
+
   const logout = () => {
     localStorage.removeItem('user');
     navigate('/');
@@ -263,6 +272,7 @@ const AdminDashboard = () => {
                   <TimetableDisplay 
                     timetable={selectedTimetable} 
                     onDelete={() => deleteTimetable(selectedTimetable.id)}
+                    onUpdate={handleTimetableUpdate}
                   />
             </CardContent>
           </Card>

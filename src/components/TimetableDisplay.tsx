@@ -1,24 +1,111 @@
-import React from 'react';
-import { GeneratedTimetable } from '@/types/timetable';
+import React, { useState } from 'react';
+import { GeneratedTimetable, TimetableEntry, Faculty } from '@/types/timetable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Download, FileSpreadsheet, FileText, Trash2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Download, FileSpreadsheet, FileText, Trash2, Edit3, Save, X } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
 interface TimetableDisplayProps {
   timetable: GeneratedTimetable;
   onDelete?: () => void;
+  onUpdate?: (updatedTimetable: GeneratedTimetable) => void;
+  availableFaculties?: Faculty[];
 }
 
-const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
+const TimetableDisplay = ({ timetable, onDelete, onUpdate, availableFaculties = [] }: TimetableDisplayProps) => {
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<TimetableEntry | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editedTimetable, setEditedTimetable] = useState<GeneratedTimetable>(timetable);
+  const { toast } = useToast();
+  
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const periods = [1, 2, 3, 4, 5, 6, 7, 8];
 
   const getEntriesForSlot = (day: string, period: number) => {
-    return timetable.entries.filter(entry => 
+    return editedTimetable.entries.filter(entry => 
       entry.timeSlot.day === day && entry.timeSlot.period === period
     );
+  };
+
+  const handleSlotClick = (day: string, period: number) => {
+    if (!isEditMode) return;
+    
+    const entries = getEntriesForSlot(day, period);
+    if (entries.length > 0) {
+      setEditingEntry(entries[0]); // Edit first entry if multiple
+      setEditDialogOpen(true);
+    }
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingEntry) return;
+
+    const updatedEntries = editedTimetable.entries.map(entry => 
+      entry.id === editingEntry.id ? editingEntry : entry
+    );
+
+    const updatedTimetable = {
+      ...editedTimetable,
+      entries: updatedEntries
+    };
+
+    setEditedTimetable(updatedTimetable);
+    setEditDialogOpen(false);
+    setEditingEntry(null);
+    
+    toast({
+      title: "Success",
+      description: "Time slot updated successfully",
+    });
+  };
+
+  const handleDeleteEntry = () => {
+    if (!editingEntry) return;
+
+    const updatedEntries = editedTimetable.entries.filter(entry => 
+      entry.id !== editingEntry.id
+    );
+
+    const updatedTimetable = {
+      ...editedTimetable,
+      entries: updatedEntries
+    };
+
+    setEditedTimetable(updatedTimetable);
+    setEditDialogOpen(false);
+    setEditingEntry(null);
+    
+    toast({
+      title: "Success",
+      description: "Time slot cleared successfully",
+    });
+  };
+
+  const handleSaveChanges = () => {
+    if (onUpdate) {
+      onUpdate(editedTimetable);
+      setIsEditMode(false);
+      toast({
+        title: "Success",
+        description: "Timetable changes saved",
+      });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedTimetable(timetable);
+    setIsEditMode(false);
+    toast({
+      title: "Cancelled",
+      description: "Changes discarded",
+    });
   };
 
   const getFormattedSubjectDisplay = (entries: any[]) => {
@@ -199,9 +286,40 @@ const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
               </CardDescription>
             </div>
             <div className="flex gap-2">
+              {onUpdate && (
+                <>
+                  {!isEditMode ? (
+                    <Button 
+                      onClick={() => setIsEditMode(true)}
+                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                    >
+                      <Edit3 className="mr-2 h-4 w-4" />
+                      Edit Timetable
+                    </Button>
+                  ) : (
+                    <>
+                      <Button 
+                        onClick={handleSaveChanges}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <Save className="mr-2 h-4 w-4" />
+                        Save Changes
+                      </Button>
+                      <Button 
+                        onClick={handleCancelEdit}
+                        variant="outline"
+                      >
+                        <X className="mr-2 h-4 w-4" />
+                        Cancel
+                      </Button>
+                    </>
+                  )}
+                </>
+              )}
               <Button 
                 onClick={downloadCSV} 
                 className="bg-green-600 hover:bg-green-700 text-white"
+                disabled={isEditMode}
               >
                 <FileSpreadsheet className="mr-2 h-4 w-4" />
                 Download CSV
@@ -209,6 +327,7 @@ const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
               <Button 
                 onClick={downloadPDF} 
                 className="bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={isEditMode}
               >
                 <FileText className="mr-2 h-4 w-4" />
                 Download PDF
@@ -217,6 +336,7 @@ const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
                 <Button 
                   onClick={onDelete} 
                   variant="destructive"
+                  disabled={isEditMode}
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
@@ -275,12 +395,22 @@ const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
                   
                   return (
                     <React.Fragment key={`${day}-${period}`}>
-                      <td className={`border border-gray-300 p-2 text-center text-sm font-medium ${colorClass} relative`}>
+                      <td 
+                        className={`border border-gray-300 p-2 text-center text-sm font-medium ${colorClass} relative ${
+                          isEditMode && displayText !== 'Free' ? 'cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-purple-500' : ''
+                        }`}
+                        onClick={() => handleSlotClick(day, period)}
+                      >
                         <div className="rounded-md p-2 h-full flex items-center justify-center">
                           {displayText === 'Free' ? (
                             <span className="text-gray-400 italic">Free</span>
                           ) : (
-                            <span className="font-semibold">{displayText}</span>
+                            <>
+                              <span className="font-semibold">{displayText}</span>
+                              {isEditMode && (
+                                <Edit3 className="ml-2 h-3 w-3 opacity-50" />
+                              )}
+                            </>
                           )}
                         </div>
                       </td>
@@ -307,6 +437,126 @@ const TimetableDisplay = ({ timetable, onDelete }: TimetableDisplayProps) => {
           </tbody>
         </table>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Time Slot</DialogTitle>
+            <DialogDescription>
+              Modify the details for {editingEntry?.timeSlot.day} - Period {editingEntry?.timeSlot.period}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {editingEntry && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="subject">Subject Name</Label>
+                <Input
+                  id="subject"
+                  value={editingEntry.subject}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, subject: e.target.value })}
+                  placeholder="Enter subject name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="faculty">Faculty Name</Label>
+                {availableFaculties.length > 0 ? (
+                  <Select
+                    value={editingEntry.facultyId}
+                    onValueChange={(value) => {
+                      const selectedFaculty = availableFaculties.find(f => f.id === value);
+                      if (selectedFaculty) {
+                        setEditingEntry({
+                          ...editingEntry,
+                          facultyId: value,
+                          facultyName: selectedFaculty.name
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select faculty" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableFaculties.map((faculty) => (
+                        <SelectItem key={faculty.id} value={faculty.id}>
+                          {faculty.name} ({faculty.id})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id="faculty"
+                    value={editingEntry.facultyName}
+                    onChange={(e) => setEditingEntry({ ...editingEntry, facultyName: e.target.value })}
+                    placeholder="Enter faculty name"
+                  />
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="type">Subject Type</Label>
+                <Select
+                  value={editingEntry.subjectType}
+                  onValueChange={(value: 'theory' | 'lab') => 
+                    setEditingEntry({ ...editingEntry, subjectType: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="theory">Theory</SelectItem>
+                    <SelectItem value="lab">Lab</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {editingEntry.subjectType === 'lab' && (
+                <div className="space-y-2">
+                  <Label htmlFor="batch">Batch</Label>
+                  <Select
+                    value={editingEntry.batch || 'A'}
+                    onValueChange={(value: 'A' | 'B') => 
+                      setEditingEntry({ ...editingEntry, batch: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="A">Batch A</SelectItem>
+                      <SelectItem value="B">Batch B</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteEntry}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Clear Slot
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

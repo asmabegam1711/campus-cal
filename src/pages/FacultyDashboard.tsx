@@ -29,6 +29,18 @@ const FacultyDashboard = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  const handleTimetableUpdate = (updatedTimetable: GeneratedTimetable) => {
+    setGeneratedTimetable(updatedTimetable);
+    const savedTimetables = localStorage.getItem('timetables');
+    if (savedTimetables) {
+      const timetables = JSON.parse(savedTimetables);
+      const updatedTimetables = timetables.map((t: GeneratedTimetable) => 
+        t.id === updatedTimetable.id ? updatedTimetable : t
+      );
+      localStorage.setItem('timetables', JSON.stringify(updatedTimetables));
+    }
+  };
+
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (!userData) {
@@ -436,6 +448,8 @@ const FacultyDashboard = () => {
           <TimetableDisplay 
             timetable={generatedTimetable} 
             onDelete={() => setGeneratedTimetable(null)}
+            onUpdate={handleTimetableUpdate}
+            availableFaculties={faculties}
           />
             </CardContent>
           </Card>

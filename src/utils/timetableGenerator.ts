@@ -151,129 +151,135 @@ export const generateTimetable = (
   const theorySubjects = allSubjects.filter(s => s.subject.type === 'theory');
   const labSubjects = allSubjects.filter(s => s.subject.type === 'lab');
 
-  // Strategic lab allocation - distribute across different days with proper batch splitting
+  // Strategic lab allocation - exactly 3 continuous periods per lab session
   const allocateLabs = () => {
     if (labSubjects.length === 0) return;
     
-    const labDays = ['Monday', 'Wednesday', 'Friday']; // Distribute labs on alternate days
-    let labDayIndex = 0;
+    const labDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     
     console.log(`Allocating ${labSubjects.length} lab subjects for ${className}`);
     
-    // Process each lab subject individually for proper allocation
+    // Track how many lab sessions have been allocated for each subject
+    const labSessionsAllocated = new Map<string, number>();
+    labSubjects.forEach(ls => labSessionsAllocated.set(ls.subject.name, 0));
+    
+    // Process each lab subject - allocate based on periodsPerWeek / 3
     labSubjects.forEach((labSubject, index) => {
-      let attempts = 0;
-      let labSlot = null;
-      let targetDay = '';
+      const sessionsNeeded = Math.floor(labSubject.subject.periodsPerWeek / 3); // Each session = 3 periods
+      let sessionsAllocated = 0;
       
-      // Try to find a suitable day and time slot
-      while (attempts < labDays.length && !labSlot) {
-        targetDay = labDays[(labDayIndex + attempts) % labDays.length];
+      console.log(`Lab ${labSubject.subject.name} needs ${sessionsNeeded} sessions`);
+      
+      // Allocate required number of lab sessions
+      while (sessionsAllocated < sessionsNeeded) {
+        let labSlot = null;
+        let targetDay = '';
+        let dayAttempts = 0;
         
-        // Find available 3-period slots for lab
-        const findLabSlot = () => {
-          for (let startPeriod = 1; startPeriod <= 6; startPeriod++) {
-            const periodsNeeded = [startPeriod, startPeriod + 1, startPeriod + 2];
-            
-            const canAllocate = periodsNeeded.every(period => {
-              if (period > 8) return false;
-              // Check local schedule
-              const hasLocalConflict = entries.some(entry => 
-                entry.timeSlot.day === targetDay && entry.timeSlot.period === period
-              );
-              // Check global schedule for faculty availability
-              const hasGlobalConflict = !globalScheduleManager.isFacultyAvailable(labSubject.faculty.id, targetDay, period);
-              
-              return !hasLocalConflict && !hasGlobalConflict;
-            });
-
-            if (canAllocate) {
-              return { startPeriod, periodsNeeded };
-            }
-          }
-          return null;
-        };
-
-        labSlot = findLabSlot();
-        attempts++;
-      }
-      
-      if (!labSlot) {
-        console.warn(`Could not allocate lab slot for ${labSubject.subject.name}`);
-        return;
-      }
-      
-      labDayIndex++;
-      
-      // Find another lab subject for batch B (different from current lab)
-      const otherLabSubjects = labSubjects.filter(lab => 
-        lab.subject.name !== labSubject.subject.name && 
-        lab.faculty.id !== labSubject.faculty.id
-      );
-      
-      let batchBLab = labSubject; // Default to same subject if no other available
-      if (otherLabSubjects.length > 0) {
-        // Select the best available lab for batch B
-        batchBLab = otherLabSubjects.find(lab => 
-          labSlot.periodsNeeded.every(period => 
-            globalScheduleManager.isFacultyAvailable(lab.faculty.id, targetDay, period)
-          )
-        ) || otherLabSubjects[index % otherLabSubjects.length];
-      }
-      
-      console.log(`Allocating lab: ${labSubject.subject.name} (Batch A) & ${batchBLab.subject.name} (Batch B) on ${targetDay}`);
-      
-      labSlot.periodsNeeded.forEach((period, periodIndex) => {
-        const timeSlot = timeSlots.find(slot => slot.day === targetDay && slot.period === period);
-        
-        if (timeSlot) {
-          // Batch A - Current lab subject
-          entries.push({
-            id: `${targetDay}-${period}-${labSubject.faculty.id}-A`,
-            timeSlot,
-            facultyId: labSubject.faculty.id,
-            facultyName: labSubject.faculty.name,
-            subject: labSubject.subject.name,
-            subjectType: 'lab',
-            batch: 'A',
-            isLabContinuation: periodIndex > 0
-          });
+        // Try to find a suitable day and time slot
+        while (dayAttempts < labDays.length && !labSlot) {
+          targetDay = labDays[dayAttempts];
           
-          // Batch B - Different lab subject (only if different faculty)
-          if (batchBLab.faculty.id !== labSubject.faculty.id) {
+          // Find available 3-period slots for lab (exactly 3 continuous periods)
+          const findLabSlot = () => {
+            for (let startPeriod = 1; startPeriod <= 6; startPeriod++) {
+              const periodsNeeded = [startPeriod, startPeriod + 1, startPeriod + 2];
+              
+              // Check if all 3 periods are available
+              const canAllocate = periodsNeeded.every(period => {
+                if (period > 8) return false;
+                const hasLocalConflict = entries.some(entry => 
+                  entry.timeSlot.day === targetDay && entry.timeSlot.period === period
+                );
+                const hasGlobalConflict = !globalScheduleManager.isFacultyAvailable(labSubject.faculty.id, targetDay, period);
+                return !hasLocalConflict && !hasGlobalConflict;
+              });
+
+              if (canAllocate) {
+                return { startPeriod, periodsNeeded };
+              }
+            }
+            return null;
+          };
+
+          labSlot = findLabSlot();
+          dayAttempts++;
+        }
+        
+        if (!labSlot) {
+          console.warn(`Could not allocate lab session ${sessionsAllocated + 1} for ${labSubject.subject.name}`);
+          break; // Exit if no slot found
+        }
+        
+        // Find another lab subject for batch B
+        const otherLabSubjects = labSubjects.filter(lab => 
+          lab.subject.name !== labSubject.subject.name && 
+          lab.faculty.id !== labSubject.faculty.id
+        );
+        
+        let batchBLab = labSubject;
+        if (otherLabSubjects.length > 0) {
+          batchBLab = otherLabSubjects.find(lab => 
+            labSlot.periodsNeeded.every(period => 
+              globalScheduleManager.isFacultyAvailable(lab.faculty.id, targetDay, period)
+            )
+          ) || otherLabSubjects[index % otherLabSubjects.length];
+        }
+        
+        console.log(`Allocating lab session ${sessionsAllocated + 1}: ${labSubject.subject.name} (Batch A) & ${batchBLab.subject.name} (Batch B) on ${targetDay}`);
+        
+        // Allocate exactly 3 continuous periods
+        labSlot.periodsNeeded.forEach((period, periodIndex) => {
+          const timeSlot = timeSlots.find(slot => slot.day === targetDay && slot.period === period);
+          
+          if (timeSlot) {
+            // Batch A
             entries.push({
-              id: `${targetDay}-${period}-${batchBLab.faculty.id}-B`,
+              id: `${targetDay}-${period}-${labSubject.faculty.id}-A`,
               timeSlot,
-              facultyId: batchBLab.faculty.id,
-              facultyName: batchBLab.faculty.name,
-              subject: batchBLab.subject.name,
+              facultyId: labSubject.faculty.id,
+              facultyName: labSubject.faculty.name,
+              subject: labSubject.subject.name,
               subjectType: 'lab',
-              batch: 'B',
+              batch: 'A',
               isLabContinuation: periodIndex > 0
             });
             
-            // Mark batch B faculty as busy
-            facultySchedule.get(batchBLab.faculty.id)?.add(`${targetDay}-${period}`);
-            globalScheduleManager.addFacultyAssignment(batchBLab.faculty.id, targetDay, period, className, year, section, semester);
+            // Batch B (if different faculty)
+            if (batchBLab.faculty.id !== labSubject.faculty.id) {
+              entries.push({
+                id: `${targetDay}-${period}-${batchBLab.faculty.id}-B`,
+                timeSlot,
+                facultyId: batchBLab.faculty.id,
+                facultyName: batchBLab.faculty.name,
+                subject: batchBLab.subject.name,
+                subjectType: 'lab',
+                batch: 'B',
+                isLabContinuation: periodIndex > 0
+              });
+              
+              facultySchedule.get(batchBLab.faculty.id)?.add(`${targetDay}-${period}`);
+              globalScheduleManager.addFacultyAssignment(batchBLab.faculty.id, targetDay, period, className, year, section, semester);
+            }
+            
+            // Mark batch A faculty as busy
+            facultySchedule.get(labSubject.faculty.id)?.add(`${targetDay}-${period}`);
+            globalScheduleManager.addFacultyAssignment(labSubject.faculty.id, targetDay, period, className, year, section, semester);
           }
-          
-          // Mark batch A faculty as busy
-          facultySchedule.get(labSubject.faculty.id)?.add(`${targetDay}-${period}`);
-          globalScheduleManager.addFacultyAssignment(labSubject.faculty.id, targetDay, period, className, year, section, semester);
-        }
-      });
-      
-      // Update subject counts
-      subjectWeeklyCount.set(labSubject.subject.name, (subjectWeeklyCount.get(labSubject.subject.name) || 0) + 1);
-      if (batchBLab.faculty.id !== labSubject.faculty.id) {
-        subjectWeeklyCount.set(batchBLab.subject.name, (subjectWeeklyCount.get(batchBLab.subject.name) || 0) + 1);
+        });
+        
+        sessionsAllocated++;
+        labSessionsAllocated.set(labSubject.subject.name, sessionsAllocated);
       }
+      
+      // Update weekly count (3 periods per session)
+      subjectWeeklyCount.set(labSubject.subject.name, sessionsAllocated * 3);
     });
   };
 
   allocateLabs();
 
-  // Smart theory allocation with better distribution
+  // Smart theory allocation - allocate exactly periodsPerWeek for each subject
   const allocateTheorySubjects = () => {
     const availableSlots = timeSlots.filter(slot => {
       return !entries.some(entry => 
@@ -282,44 +288,33 @@ export const generateTimetable = (
       );
     });
 
-    // Track period-wise subject usage to avoid same subject in same period across days
+    // Track how many periods allocated for each theory subject
+    const theoryPeriodsAllocated = new Map<string, number>();
+    theorySubjects.forEach(ts => theoryPeriodsAllocated.set(ts.subject.name, 0));
+    
+    // Track period-wise subject usage
     const periodSubjectUsage: Map<number, Set<string>> = new Map();
     for (let i = 1; i <= 8; i++) {
       periodSubjectUsage.set(i, new Set());
     }
 
-    // Create distributed subject pool
-    const createSubjectPool = () => {
-      const pool: Array<{faculty: Faculty, subject: Subject, priority: number}> = [];
-      
-      theorySubjects.forEach(({faculty, subject}) => {
-        for (let i = 0; i < subject.periodsPerWeek; i++) {
-          pool.push({
-            faculty, 
-            subject, 
-            priority: Math.random() // Randomize for better distribution
-          });
-        }
-      });
-      
-      return pool.sort((a, b) => b.priority - a.priority);
-    };
-
-    let subjectPool = createSubjectPool();
     const dailySubjectUsage: Map<string, Set<string>> = new Map();
-    
-    // Initialize daily tracking
     daysOfWeek.forEach(day => {
       dailySubjectUsage.set(day, new Set());
     });
 
-    // Group slots by day for better distribution
+    // Group slots by day
     const slotsByDay = new Map<string, TimeSlot[]>();
     daysOfWeek.forEach(day => {
       slotsByDay.set(day, availableSlots.filter(slot => slot.day === day));
     });
 
-    // Allocate subjects day by day with period distribution
+    // Helper to check if subject allocation is complete
+    const isSubjectComplete = (subjectName: string, requiredPeriods: number) => {
+      return (theoryPeriodsAllocated.get(subjectName) || 0) >= requiredPeriods;
+    };
+
+    // Allocate subjects day by day
     daysOfWeek.forEach(day => {
       const daySlots = slotsByDay.get(day) || [];
       const dayUsage = dailySubjectUsage.get(day) || new Set();
@@ -328,14 +323,17 @@ export const generateTimetable = (
         const slotKey = `${slot.day}-${slot.period}`;
         const periodUsage = periodSubjectUsage.get(slot.period) || new Set();
         
-        if (subjectPool.length === 0) {
-          subjectPool = createSubjectPool();
-        }
-        
-        // Find best subject with enhanced distribution logic
+        // Find best subject that hasn't reached its required periods
         const findBestSubject = () => {
-          // Priority 1: New subject for period and day
-          let candidates = subjectPool.filter(({faculty, subject}) => {
+          // Filter subjects that still need allocation
+          const needsAllocation = theorySubjects.filter(({subject}) => 
+            !isSubjectComplete(subject.name, subject.periodsPerWeek)
+          );
+          
+          if (needsAllocation.length === 0) return null;
+          
+          // Priority 1: New subject for period and day, not continuous
+          let candidates = needsAllocation.filter(({faculty, subject}) => {
             const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
             const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
             const notUsedInPeriod = !periodUsage.has(subject.name);
@@ -346,8 +344,8 @@ export const generateTimetable = (
           });
           
           if (candidates.length === 0) {
-            // Priority 2: New subject for period, avoid continuous
-            candidates = subjectPool.filter(({faculty, subject}) => {
+            // Priority 2: New subject for period, not continuous
+            candidates = needsAllocation.filter(({faculty, subject}) => {
               const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
               const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
               const notUsedInPeriod = !periodUsage.has(subject.name);
@@ -358,8 +356,8 @@ export const generateTimetable = (
           }
           
           if (candidates.length === 0) {
-            // Priority 3: Faculty free, avoid continuous
-            candidates = subjectPool.filter(({faculty, subject}) => {
+            // Priority 3: Faculty free, not continuous
+            candidates = needsAllocation.filter(({faculty, subject}) => {
               const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
               const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
               const notContinuous = !isSubjectContinuous(slot, subject.name);
@@ -370,7 +368,7 @@ export const generateTimetable = (
           
           if (candidates.length === 0) {
             // Priority 4: Just faculty free
-            candidates = subjectPool.filter(({faculty}) => {
+            candidates = needsAllocation.filter(({faculty}) => {
               const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
               const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
               return isFacultyFree && isGloballyFree;
@@ -407,25 +405,26 @@ export const generateTimetable = (
         const selected = findBestSubject();
         
         if (selected) {
-          // Allocate the subject locally and globally
+          // Allocate the subject
           facultySchedule.get(selected.faculty.id)?.add(slotKey);
           globalScheduleManager.addFacultyAssignment(selected.faculty.id, slot.day, slot.period, className, year, section, semester);
           dayUsage.add(selected.subject.name);
           periodUsage.add(selected.subject.name);
-          subjectWeeklyCount.set(selected.subject.name, (subjectWeeklyCount.get(selected.subject.name) || 0) + 1);
+          
+          // Increment allocation count
+          theoryPeriodsAllocated.set(
+            selected.subject.name, 
+            (theoryPeriodsAllocated.get(selected.subject.name) || 0) + 1
+          );
+          subjectWeeklyCount.set(
+            selected.subject.name, 
+            (subjectWeeklyCount.get(selected.subject.name) || 0) + 1
+          );
           
           // Update daily count
           const dailyMap = subjectDailyCount.get(selected.subject.name);
           if (dailyMap) {
             dailyMap.set(slot.day, (dailyMap.get(slot.day) || 0) + 1);
-          }
-          
-          // Remove from pool
-          const index = subjectPool.findIndex(s => 
-            s.faculty.id === selected.faculty.id && s.subject.name === selected.subject.name
-          );
-          if (index !== -1) {
-            subjectPool.splice(index, 1);
           }
           
           entries.push({
@@ -436,6 +435,8 @@ export const generateTimetable = (
             subject: selected.subject.name,
             subjectType: 'theory'
           });
+          
+          console.log(`Allocated ${selected.subject.name}: ${theoryPeriodsAllocated.get(selected.subject.name)}/${selected.subject.periodsPerWeek} periods`);
         }
       });
     });

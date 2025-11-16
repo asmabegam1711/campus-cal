@@ -332,37 +332,48 @@ export const generateTimetable = (
           
           if (needsAllocation.length === 0) return null;
           
-          // Priority 1: New subject for period and day, not continuous
+          // For continuous allocation, prioritize continuing subjects
+          const continuousSubjects = needsAllocation.filter(({faculty, subject}) => {
+            if (subject.allocation !== 'continuous') return false;
+            const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
+            const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
+            const isContinuous = isSubjectContinuous(slot, subject.name);
+            return isFacultyFree && isGloballyFree && isContinuous;
+          });
+          
+          if (continuousSubjects.length > 0) return continuousSubjects[0];
+          
+          // Priority 1: New subject for period and day
           let candidates = needsAllocation.filter(({faculty, subject}) => {
             const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
             const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
             const notUsedInPeriod = !periodUsage.has(subject.name);
             const notUsedToday = !dayUsage.has(subject.name);
-            const notContinuous = !isSubjectContinuous(slot, subject.name);
+            const continuousCheck = subject.allocation === 'random' ? !isSubjectContinuous(slot, subject.name) : true;
             
-            return isFacultyFree && isGloballyFree && notUsedInPeriod && notUsedToday && notContinuous;
+            return isFacultyFree && isGloballyFree && notUsedInPeriod && notUsedToday && continuousCheck;
           });
           
           if (candidates.length === 0) {
-            // Priority 2: New subject for period, not continuous
+            // Priority 2: New subject for period
             candidates = needsAllocation.filter(({faculty, subject}) => {
               const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
               const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
               const notUsedInPeriod = !periodUsage.has(subject.name);
-              const notContinuous = !isSubjectContinuous(slot, subject.name);
+              const continuousCheck = subject.allocation === 'random' ? !isSubjectContinuous(slot, subject.name) : true;
               
-              return isFacultyFree && isGloballyFree && notUsedInPeriod && notContinuous;
+              return isFacultyFree && isGloballyFree && notUsedInPeriod && continuousCheck;
             });
           }
           
           if (candidates.length === 0) {
-            // Priority 3: Faculty free, not continuous
+            // Priority 3: Faculty free
             candidates = needsAllocation.filter(({faculty, subject}) => {
               const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
               const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
-              const notContinuous = !isSubjectContinuous(slot, subject.name);
+              const continuousCheck = subject.allocation === 'random' ? !isSubjectContinuous(slot, subject.name) : true;
               
-              return isFacultyFree && isGloballyFree && notContinuous;
+              return isFacultyFree && isGloballyFree && continuousCheck;
             });
           }
           

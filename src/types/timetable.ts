@@ -2,6 +2,7 @@ export interface Subject {
   name: string;
   type: 'theory' | 'lab';
   periodsPerWeek: number;
+  allocation: 'continuous' | 'random';
 }
 
 export interface Faculty {

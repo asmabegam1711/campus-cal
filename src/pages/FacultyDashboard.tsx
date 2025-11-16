@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Trash2, LogOut, GraduationCap, BookOpen } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Plus, Trash2, LogOut, GraduationCap, BookOpen, Pencil } from 'lucide-react';
 import { Faculty, GeneratedTimetable, Subject } from '@/types/timetable';
 import { generateTimetable } from '@/utils/timetableGenerator';
 import { useToast } from '@/hooks/use-toast';
@@ -21,6 +22,8 @@ const FacultyDashboard = () => {
     id: '', 
     subjects: [{ name: '', type: 'theory' as const, periodsPerWeek: 4 }] 
   });
+  const [editingFaculty, setEditingFaculty] = useState<Faculty | null>(null);
+  const [editFacultyForm, setEditFacultyForm] = useState<{ name: string; subjects: Subject[] } | null>(null);
   const [className, setClassName] = useState('');
   const [year, setYear] = useState<number>(1);
   const [section, setSection] = useState('A');
@@ -132,6 +135,73 @@ const FacultyDashboard = () => {
       newSet.delete(id);
       return newSet;
     });
+  };
+
+  const startEditFaculty = (faculty: Faculty) => {
+    setEditingFaculty(faculty);
+    setEditFacultyForm({
+      name: faculty.name,
+      subjects: [...faculty.subjects]
+    });
+  };
+
+  const updateEditSubject = (index: number, field: keyof Subject, value: any) => {
+    if (!editFacultyForm) return;
+    setEditFacultyForm(prev => ({
+      ...prev!,
+      subjects: prev!.subjects.map((subject, i) => 
+        i === index ? { ...subject, [field]: value } : subject
+      )
+    }));
+  };
+
+  const addEditSubject = () => {
+    if (!editFacultyForm) return;
+    setEditFacultyForm(prev => ({
+      ...prev!,
+      subjects: [...prev!.subjects, { name: '', type: 'theory', periodsPerWeek: 4 }]
+    }));
+  };
+
+  const removeEditSubject = (index: number) => {
+    if (!editFacultyForm) return;
+    setEditFacultyForm(prev => ({
+      ...prev!,
+      subjects: prev!.subjects.filter((_, i) => i !== index)
+    }));
+  };
+
+  const saveEditFaculty = () => {
+    if (!editingFaculty || !editFacultyForm) return;
+
+    const validSubjects = editFacultyForm.subjects.filter(subject => subject.name.trim() !== '');
+    if (validSubjects.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please add at least one subject",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setFaculties(prev => prev.map(f => 
+      f.id === editingFaculty.id 
+        ? { ...f, name: editFacultyForm.name, subjects: validSubjects }
+        : f
+    ));
+
+    setEditingFaculty(null);
+    setEditFacultyForm(null);
+
+    toast({
+      title: "Success",
+      description: "Faculty updated successfully",
+    });
+  };
+
+  const cancelEditFaculty = () => {
+    setEditingFaculty(null);
+    setEditFacultyForm(null);
   };
 
   const toggleFacultySelection = (id: string) => {
@@ -407,13 +477,22 @@ const FacultyDashboard = () => {
                           ))}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeFaculty(faculty.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => startEditFaculty(faculty)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFaculty(faculty.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -454,6 +533,81 @@ const FacultyDashboard = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Edit Faculty Dialog */}
+        <Dialog open={!!editingFaculty} onOpenChange={(open) => !open && cancelEditFaculty()}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Faculty Member</DialogTitle>
+            </DialogHeader>
+            {editFacultyForm && (
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="editFacultyName">Faculty Name</Label>
+                  <Input
+                    id="editFacultyName"
+                    value={editFacultyForm.name}
+                    onChange={(e) => setEditFacultyForm(prev => ({ ...prev!, name: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>Subjects</Label>
+                  <div className="space-y-3">
+                    {editFacultyForm.subjects.map((subject, index) => (
+                      <div key={index} className="p-3 border rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950 dark:to-purple-950 space-y-2">
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Subject name"
+                            value={subject.name}
+                            onChange={(e) => updateEditSubject(index, 'name', e.target.value)}
+                            className="flex-1"
+                          />
+                          {editFacultyForm.subjects.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() => removeEditSubject(index)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <select
+                            className="flex h-10 w-32 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                            value={subject.type}
+                            onChange={(e) => updateEditSubject(index, 'type', e.target.value as 'theory' | 'lab')}
+                          >
+                            <option value="theory">Theory</option>
+                            <option value="lab">Lab</option>
+                          </select>
+                          <Input
+                            type="number"
+                            placeholder="Periods/week"
+                            value={subject.periodsPerWeek}
+                            onChange={(e) => updateEditSubject(index, 'periodsPerWeek', parseInt(e.target.value) || 4)}
+                            className="w-32"
+                            min={1}
+                            max={8}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <Button type="button" variant="outline" onClick={addEditSubject} className="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white border-none hover:from-green-600 hover:to-blue-600">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Subject
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={cancelEditFaculty}>Cancel</Button>
+              <Button onClick={saveEditFaculty}>Save Changes</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

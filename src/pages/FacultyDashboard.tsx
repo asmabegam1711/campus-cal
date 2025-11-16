@@ -20,7 +20,7 @@ const FacultyDashboard = () => {
   const [newFaculty, setNewFaculty] = useState({ 
     name: '', 
     id: '', 
-    subjects: [{ name: '', type: 'theory' as const, periodsPerWeek: 4 }] 
+    subjects: [{ name: '', type: 'theory' as const, periodsPerWeek: 4, allocation: 'random' as const }] 
   });
   const [editingFaculty, setEditingFaculty] = useState<Faculty | null>(null);
   const [editFacultyForm, setEditFacultyForm] = useState<{ name: string; subjects: Subject[] } | null>(null);
@@ -61,7 +61,7 @@ const FacultyDashboard = () => {
   const addSubject = () => {
     setNewFaculty(prev => ({
       ...prev,
-      subjects: [...prev.subjects, { name: '', type: 'theory', periodsPerWeek: 4 }]
+      subjects: [...prev.subjects, { name: '', type: 'theory', periodsPerWeek: 4, allocation: 'random' }]
     }));
   };
 
@@ -120,7 +120,7 @@ const FacultyDashboard = () => {
 
     setFaculties(prev => [...prev, faculty]);
     setSelectedFacultyIds(prev => new Set([...prev, faculty.id])); // Auto-select newly added faculty
-    setNewFaculty({ name: '', id: '', subjects: [{ name: '', type: 'theory', periodsPerWeek: 4 }] });
+    setNewFaculty({ name: '', id: '', subjects: [{ name: '', type: 'theory', periodsPerWeek: 4, allocation: 'random' }] });
     
     toast({
       title: "Success",
@@ -159,7 +159,7 @@ const FacultyDashboard = () => {
     if (!editFacultyForm) return;
     setEditFacultyForm(prev => ({
       ...prev!,
-      subjects: [...prev!.subjects, { name: '', type: 'theory', periodsPerWeek: 4 }]
+      subjects: [...prev!.subjects, { name: '', type: 'theory', periodsPerWeek: 4, allocation: 'random' }]
     }));
   };
 
@@ -361,6 +361,16 @@ const FacultyDashboard = () => {
                           min={1}
                           max={8}
                         />
+                      </div>
+                      <div className="flex gap-2">
+                        <select
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                          value={subject.allocation}
+                          onChange={(e) => updateSubject(index, 'allocation', e.target.value as 'continuous' | 'random')}
+                        >
+                          <option value="random">Random Allocation</option>
+                          <option value="continuous">Continuous Allocation</option>
+                        </select>
                       </div>
                     </div>
                   ))}
@@ -591,6 +601,16 @@ const FacultyDashboard = () => {
                             min={1}
                             max={8}
                           />
+                        </div>
+                        <div className="flex gap-2">
+                          <select
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                            value={subject.allocation}
+                            onChange={(e) => updateEditSubject(index, 'allocation', e.target.value as 'continuous' | 'random')}
+                          >
+                            <option value="random">Random Allocation</option>
+                            <option value="continuous">Continuous Allocation</option>
+                          </select>
                         </div>
                       </div>
                     ))}

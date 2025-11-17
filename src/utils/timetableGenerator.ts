@@ -152,6 +152,7 @@ export const generateTimetable = (
   const labSubjects = allSubjects.filter(s => s.subject.type === 'lab');
 
   // Strategic lab allocation - exactly 3 continuous periods per lab session
+  // Each batch gets exactly 1 lab per day, all labs equally distributed
   const allocateLabs = () => {
     if (labSubjects.length === 0) return;
     
@@ -159,18 +160,12 @@ export const generateTimetable = (
     
     console.log(`Allocating ${labSubjects.length} lab subjects for ${className}`);
     
-    // Track which days have been used for each batch
-    const batchADays = new Set<string>();
-    const batchBDays = new Set<string>();
+    // Track which labs have been allocated for each batch
+    const batchAAllocated = new Set<string>();
+    const batchBAllocated = new Set<string>();
     
-    // Track lab sessions for each subject and batch
-    const labSessionsAllocated = new Map<string, { batchA: number, batchB: number }>();
-    labSubjects.forEach(ls => {
-      labSessionsAllocated.set(ls.subject.name, { batchA: 0, batchB: 0 });
-    });
-    
-    // Calculate sessions needed per batch (periodsPerWeek / 3)
-    const getSessionsNeeded = (periodsPerWeek: number) => Math.floor(periodsPerWeek / 3);
+    // Track which days are used
+    const usedDays = new Set<string>();
     
     // Helper to find 3 continuous available periods on a day
     const find3ContinuousPeriods = (day: string, facultyIds: string[]) => {
@@ -228,183 +223,125 @@ export const generateTimetable = (
           );
         }
       });
-      
-      // Update session count
-      const sessions = labSessionsAllocated.get(labSubject.subject.name);
-      if (sessions) {
-        if (batch === 'A') sessions.batchA++;
-        else sessions.batchB++;
-      }
-      
-      // Mark day as used for this batch
-      if (batch === 'A') batchADays.add(day);
-      else batchBDays.add(day);
     };
     
-    // Main allocation logic
-    if (labSubjects.length === 1) {
-      // Single lab: allocate on different days for each batch
-      const lab = labSubjects[0];
-      const sessionsNeeded = getSessionsNeeded(lab.subject.periodsPerWeek);
-      
-      for (let session = 0; session < sessionsNeeded; session++) {
-        // Find day for Batch A
-        let dayAIndex = 0;
-        let dayA = '';
-        let slotA = null;
-        
-        while (dayAIndex < labDays.length) {
-          const testDay = labDays[dayAIndex];
-          if (!batchADays.has(testDay)) {
-            slotA = find3ContinuousPeriods(testDay, [lab.faculty.id]);
-            if (slotA) {
-              dayA = testDay;
-              break;
-            }
-          }
-          dayAIndex++;
-        }
-        
-        if (slotA) {
-          allocateLabSession(lab, dayA, slotA.periodsNeeded, 'A');
-          console.log(`Allocated ${lab.subject.name} for Batch A on ${dayA}`);
-        }
-        
-        // Find different day for Batch B
-        let dayBIndex = 0;
-        let dayB = '';
-        let slotB = null;
-        
-        while (dayBIndex < labDays.length) {
-          const testDay = labDays[dayBIndex];
-          if (!batchBDays.has(testDay) && testDay !== dayA) {
-            slotB = find3ContinuousPeriods(testDay, [lab.faculty.id]);
-            if (slotB) {
-              dayB = testDay;
-              break;
-            }
-          }
-          dayBIndex++;
-        }
-        
-        if (slotB) {
-          allocateLabSession(lab, dayB, slotB.periodsNeeded, 'B');
-          console.log(`Allocated ${lab.subject.name} for Batch B on ${dayB}`);
-        }
-      }
-    } else {
-      // Multiple labs: ensure all labs get allocated for both batches
-      const maxSessionsNeeded = Math.max(...labSubjects.map(ls => getSessionsNeeded(ls.subject.periodsPerWeek)));
-      
-      // Create a queue of pending lab-batch allocations
-      const pendingAllocations: Array<{lab: {faculty: Faculty, subject: Subject}, batch: 'A' | 'B', sessionsNeeded: number}> = [];
-      
-      labSubjects.forEach(lab => {
-        const sessions = getSessionsNeeded(lab.subject.periodsPerWeek);
-        pendingAllocations.push({ lab, batch: 'A', sessionsNeeded: sessions });
-        pendingAllocations.push({ lab, batch: 'B', sessionsNeeded: sessions });
-      });
-      
-      console.log(`Total pending allocations: ${pendingAllocations.length}`);
-      
-      // Allocate labs day by day
-      let dayIndex = 0;
-      while (pendingAllocations.length > 0 && dayIndex < labDays.length * maxSessionsNeeded) {
-        const currentDay = labDays[dayIndex % labDays.length];
-        
-        // Check if this day is already used by either batch
-        if (batchADays.has(currentDay) || batchBDays.has(currentDay)) {
-          dayIndex++;
-          continue;
-        }
-        
-        // Find two labs that can be scheduled on this day (one for batch A, one for batch B)
-        let batchAAllocation = null;
-        let batchBAllocation = null;
-        let batchAIndex = -1;
-        let batchBIndex = -1;
-        
-        // Find a lab for batch A
-        for (let i = 0; i < pendingAllocations.length; i++) {
-          const allocation = pendingAllocations[i];
-          if (allocation.batch === 'A') {
-            const sessions = labSessionsAllocated.get(allocation.lab.subject.name);
-            if (sessions && sessions.batchA < allocation.sessionsNeeded) {
-              batchAAllocation = allocation;
-              batchAIndex = i;
-              break;
-            }
-          }
-        }
-        
-        // Find a different lab for batch B
-        if (batchAAllocation) {
-          for (let i = 0; i < pendingAllocations.length; i++) {
-            const allocation = pendingAllocations[i];
-            if (allocation.batch === 'B' && allocation.lab.subject.name !== batchAAllocation.lab.subject.name) {
-              const sessions = labSessionsAllocated.get(allocation.lab.subject.name);
-              if (sessions && sessions.batchB < allocation.sessionsNeeded) {
-                batchBAllocation = allocation;
-                batchBIndex = i;
-                break;
-              }
-            }
-          }
-        }
-        
-        // If we found both allocations, try to schedule them
-        if (batchAAllocation && batchBAllocation) {
-          const facultyIds = [batchAAllocation.lab.faculty.id, batchBAllocation.lab.faculty.id];
-          const slot = find3ContinuousPeriods(currentDay, facultyIds);
-          
-          if (slot) {
-            // Allocate both labs on the same day
-            allocateLabSession(batchAAllocation.lab, currentDay, slot.periodsNeeded, 'A');
-            allocateLabSession(batchBAllocation.lab, currentDay, slot.periodsNeeded, 'B');
-            
-            console.log(`Day ${currentDay}: ${batchAAllocation.lab.subject.name} (Batch A) & ${batchBAllocation.lab.subject.name} (Batch B)`);
-            
-            // Check if these labs are fully allocated for their respective batches
-            const sessionsA = labSessionsAllocated.get(batchAAllocation.lab.subject.name);
-            const sessionsB = labSessionsAllocated.get(batchBAllocation.lab.subject.name);
-            
-            if (sessionsA && sessionsA.batchA >= batchAAllocation.sessionsNeeded) {
-              pendingAllocations.splice(batchAIndex, 1);
-              // Adjust batchBIndex if needed
-              if (batchBIndex > batchAIndex) batchBIndex--;
-            }
-            
-            if (sessionsB && sessionsB.batchB >= batchBAllocation.sessionsNeeded) {
-              pendingAllocations.splice(batchBIndex, 1);
-            }
-          }
-        }
-        
-        dayIndex++;
-        
-        // Safety check to prevent infinite loop
-        if (dayIndex > labDays.length * maxSessionsNeeded * 2) {
-          console.warn('Lab allocation exceeded maximum attempts');
+    // Allocate all labs - each lab once per batch
+    let labIndexA = 0;
+    let labIndexB = 1; // Start with different lab for batch B
+    
+    // Continue until all labs are allocated for both batches
+    while (batchAAllocated.size < labSubjects.length || batchBAllocated.size < labSubjects.length) {
+      // Find next available day
+      let currentDay = '';
+      for (const day of labDays) {
+        if (!usedDays.has(day)) {
+          currentDay = day;
           break;
         }
       }
       
-      if (pendingAllocations.length > 0) {
-        console.warn(`Could not allocate all lab sessions. Remaining: ${pendingAllocations.length}`);
-        pendingAllocations.forEach(pa => {
-          const sessions = labSessionsAllocated.get(pa.lab.subject.name);
-          console.warn(`  - ${pa.lab.subject.name} Batch ${pa.batch}: ${sessions ? (pa.batch === 'A' ? sessions.batchA : sessions.batchB) : 0}/${pa.sessionsNeeded} sessions`);
-        });
+      if (!currentDay) {
+        console.warn('No more available days for lab allocation');
+        break;
       }
+      
+      // Find next unallocated lab for batch A
+      let batchALab = null;
+      for (let i = 0; i < labSubjects.length; i++) {
+        const lab = labSubjects[(labIndexA + i) % labSubjects.length];
+        if (!batchAAllocated.has(lab.subject.name)) {
+          batchALab = lab;
+          labIndexA = (labIndexA + i) % labSubjects.length;
+          break;
+        }
+      }
+      
+      // Find next unallocated lab for batch B (must be different from batch A)
+      let batchBLab = null;
+      for (let i = 0; i < labSubjects.length; i++) {
+        const lab = labSubjects[(labIndexB + i) % labSubjects.length];
+        if (!batchBAllocated.has(lab.subject.name) && 
+            lab.subject.name !== (batchALab?.subject.name || '')) {
+          batchBLab = lab;
+          labIndexB = (labIndexB + i) % labSubjects.length;
+          break;
+        }
+      }
+      
+      // If we can't find different labs, try to find any remaining lab for batch B
+      if (!batchBLab) {
+        for (let i = 0; i < labSubjects.length; i++) {
+          const lab = labSubjects[i];
+          if (!batchBAllocated.has(lab.subject.name)) {
+            batchBLab = lab;
+            labIndexB = i;
+            break;
+          }
+        }
+      }
+      
+      // If we have at least one lab to allocate
+      if (batchALab || batchBLab) {
+        const facultyIds = [];
+        if (batchALab) facultyIds.push(batchALab.faculty.id);
+        if (batchBLab) facultyIds.push(batchBLab.faculty.id);
+        
+        const slot = find3ContinuousPeriods(currentDay, facultyIds);
+        
+        if (slot) {
+          // Allocate labs
+          if (batchALab) {
+            allocateLabSession(batchALab, currentDay, slot.periodsNeeded, 'A');
+            batchAAllocated.add(batchALab.subject.name);
+            console.log(`Day ${currentDay}: ${batchALab.subject.name} (Batch A)${batchBLab ? ` & ${batchBLab.subject.name} (Batch B)` : ''}`);
+          }
+          
+          if (batchBLab) {
+            allocateLabSession(batchBLab, currentDay, slot.periodsNeeded, 'B');
+            batchBAllocated.add(batchBLab.subject.name);
+            if (!batchALab) {
+              console.log(`Day ${currentDay}: ${batchBLab.subject.name} (Batch B)`);
+            }
+          }
+          
+          usedDays.add(currentDay);
+          
+          // Move to next labs
+          labIndexA = (labIndexA + 1) % labSubjects.length;
+          labIndexB = (labIndexB + 1) % labSubjects.length;
+        } else {
+          console.warn(`Could not find slot on ${currentDay} for labs`);
+          usedDays.add(currentDay); // Mark as used to try next day
+        }
+      } else {
+        // No more labs to allocate
+        break;
+      }
+      
+      // Safety check
+      if (usedDays.size >= labDays.length) {
+        console.warn('Used all available days');
+        break;
+      }
+    }
+    
+    // Report allocation status
+    console.log(`Batch A allocated: ${Array.from(batchAAllocated).join(', ')}`);
+    console.log(`Batch B allocated: ${Array.from(batchBAllocated).join(', ')}`);
+    
+    if (batchAAllocated.size < labSubjects.length) {
+      console.warn(`Missing labs for Batch A: ${labSubjects.filter(ls => !batchAAllocated.has(ls.subject.name)).map(ls => ls.subject.name).join(', ')}`);
+    }
+    
+    if (batchBAllocated.size < labSubjects.length) {
+      console.warn(`Missing labs for Batch B: ${labSubjects.filter(ls => !batchBAllocated.has(ls.subject.name)).map(ls => ls.subject.name).join(', ')}`);
     }
     
     // Update weekly counts
     labSubjects.forEach(ls => {
-      const sessions = labSessionsAllocated.get(ls.subject.name);
-      if (sessions) {
-        const totalSessions = sessions.batchA + sessions.batchB;
-        subjectWeeklyCount.set(ls.subject.name, totalSessions * 3);
-      }
+      const countA = batchAAllocated.has(ls.subject.name) ? 1 : 0;
+      const countB = batchBAllocated.has(ls.subject.name) ? 1 : 0;
+      subjectWeeklyCount.set(ls.subject.name, (countA + countB) * 3);
     });
   };
 

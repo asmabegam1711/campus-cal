@@ -157,15 +157,13 @@ export const generateTimetable = (
     if (labSubjects.length === 0) return;
     
     const labDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const numLabs = labSubjects.length;
     
-    console.log(`Allocating ${labSubjects.length} lab subjects for ${className}`);
+    console.log(`Allocating ${numLabs} lab subjects for ${className}`);
     
     // Track which labs have been allocated for each batch
     const batchAAllocated = new Set<string>();
     const batchBAllocated = new Set<string>();
-    
-    // Track which days are used
-    const usedDays = new Set<string>();
     
     // Helper to find 3 continuous available periods on a day
     const find3ContinuousPeriods = (day: string, facultyIds: string[]) => {
@@ -225,103 +223,90 @@ export const generateTimetable = (
       });
     };
     
-    // Allocate all labs - each lab once per batch
-    let labIndexA = 0;
-    let labIndexB = 1; // Start with different lab for batch B
+    // Rotation pattern for lab allocation
+    // For N labs, we need N days where each batch does each lab exactly once
+    // Day i: Batch A does Lab i, Batch B does Lab (i + offset) % N
+    let dayIndex = 0;
     
-    // Continue until all labs are allocated for both batches
-    while (batchAAllocated.size < labSubjects.length || batchBAllocated.size < labSubjects.length) {
-      // Find next available day
-      let currentDay = '';
-      for (const day of labDays) {
-        if (!usedDays.has(day)) {
-          currentDay = day;
-          break;
-        }
-      }
+    for (let i = 0; i < numLabs && dayIndex < labDays.length; i++) {
+      const day = labDays[dayIndex];
       
-      if (!currentDay) {
-        console.warn('No more available days for lab allocation');
-        break;
-      }
+      // Calculate which labs to assign on this day
+      const batchALabIndex = i;
+      const batchBLabIndex = (i + Math.floor(numLabs / 2) + (numLabs % 2)) % numLabs;
       
-      // Find next unallocated lab for batch A
-      let batchALab = null;
-      for (let i = 0; i < labSubjects.length; i++) {
-        const lab = labSubjects[(labIndexA + i) % labSubjects.length];
-        if (!batchAAllocated.has(lab.subject.name)) {
-          batchALab = lab;
-          labIndexA = (labIndexA + i) % labSubjects.length;
-          break;
-        }
-      }
+      const batchALab = labSubjects[batchALabIndex];
+      const batchBLab = labSubjects[batchBLabIndex];
       
-      // Find next unallocated lab for batch B (must be different from batch A)
-      let batchBLab = null;
-      for (let i = 0; i < labSubjects.length; i++) {
-        const lab = labSubjects[(labIndexB + i) % labSubjects.length];
-        if (!batchBAllocated.has(lab.subject.name) && 
-            lab.subject.name !== (batchALab?.subject.name || '')) {
-          batchBLab = lab;
-          labIndexB = (labIndexB + i) % labSubjects.length;
-          break;
-        }
-      }
-      
-      // If we can't find different labs, try to find any remaining lab for batch B
-      if (!batchBLab) {
-        for (let i = 0; i < labSubjects.length; i++) {
-          const lab = labSubjects[i];
-          if (!batchBAllocated.has(lab.subject.name)) {
-            batchBLab = lab;
-            labIndexB = i;
-            break;
-          }
-        }
-      }
-      
-      // If we have at least one lab to allocate
-      if (batchALab || batchBLab) {
-        const facultyIds = [];
-        if (batchALab) facultyIds.push(batchALab.faculty.id);
-        if (batchBLab) facultyIds.push(batchBLab.faculty.id);
+      // Check if both labs are already allocated
+      if (batchAAllocated.has(batchALab.subject.name) && batchBAllocated.has(batchBLab.subject.name)) {
+        // Try to find unallocated labs
+        const unallocatedA = labSubjects.find(ls => !batchAAllocated.has(ls.subject.name));
+        const unallocatedB = labSubjects.find(ls => 
+          !batchBAllocated.has(ls.subject.name) && ls.subject.name !== unallocatedA?.subject.name
+        );
         
-        const slot = find3ContinuousPeriods(currentDay, facultyIds);
+        if (!unallocatedA && !unallocatedB) break;
         
-        if (slot) {
-          // Allocate labs
-          if (batchALab) {
-            allocateLabSession(batchALab, currentDay, slot.periodsNeeded, 'A');
-            batchAAllocated.add(batchALab.subject.name);
-            console.log(`Day ${currentDay}: ${batchALab.subject.name} (Batch A)${batchBLab ? ` & ${batchBLab.subject.name} (Batch B)` : ''}`);
+        if (unallocatedA && unallocatedB) {
+          const facultyIds = [unallocatedA.faculty.id, unallocatedB.faculty.id];
+          const slot = find3ContinuousPeriods(day, facultyIds);
+          
+          if (slot) {
+            allocateLabSession(unallocatedA, day, slot.periodsNeeded, 'A');
+            allocateLabSession(unallocatedB, day, slot.periodsNeeded, 'B');
+            batchAAllocated.add(unallocatedA.subject.name);
+            batchBAllocated.add(unallocatedB.subject.name);
+            console.log(`Day ${day}: Batch A → ${unallocatedA.subject.name}, Batch B → ${unallocatedB.subject.name}`);
+            dayIndex++;
+          } else {
+            dayIndex++;
           }
-          
-          if (batchBLab) {
-            allocateLabSession(batchBLab, currentDay, slot.periodsNeeded, 'B');
-            batchBAllocated.add(batchBLab.subject.name);
-            if (!batchALab) {
-              console.log(`Day ${currentDay}: ${batchBLab.subject.name} (Batch B)`);
-            }
-          }
-          
-          usedDays.add(currentDay);
-          
-          // Move to next labs
-          labIndexA = (labIndexA + 1) % labSubjects.length;
-          labIndexB = (labIndexB + 1) % labSubjects.length;
-        } else {
-          console.warn(`Could not find slot on ${currentDay} for labs`);
-          usedDays.add(currentDay); // Mark as used to try next day
         }
+        continue;
+      }
+      
+      // Determine which labs to allocate
+      let labA = batchALab;
+      let labB = batchBLab;
+      
+      // Skip if already allocated
+      if (batchAAllocated.has(labA.subject.name)) {
+        labA = labSubjects.find(ls => !batchAAllocated.has(ls.subject.name)) || labA;
+      }
+      
+      if (batchBAllocated.has(labB.subject.name) || labB.subject.name === labA.subject.name) {
+        labB = labSubjects.find(ls => 
+          !batchBAllocated.has(ls.subject.name) && ls.subject.name !== labA.subject.name
+        ) || labB;
+      }
+      
+      // If we're trying to allocate the same lab to both batches, skip
+      if (labA.subject.name === labB.subject.name) {
+        dayIndex++;
+        continue;
+      }
+      
+      const facultyIds = [labA.faculty.id, labB.faculty.id];
+      const slot = find3ContinuousPeriods(day, facultyIds);
+      
+      if (slot) {
+        // Allocate labs for both batches on same periods
+        if (!batchAAllocated.has(labA.subject.name)) {
+          allocateLabSession(labA, day, slot.periodsNeeded, 'A');
+          batchAAllocated.add(labA.subject.name);
+        }
+        
+        if (!batchBAllocated.has(labB.subject.name)) {
+          allocateLabSession(labB, day, slot.periodsNeeded, 'B');
+          batchBAllocated.add(labB.subject.name);
+        }
+        
+        console.log(`Day ${day}: Batch A → ${labA.subject.name}, Batch B → ${labB.subject.name}`);
+        dayIndex++;
       } else {
-        // No more labs to allocate
-        break;
-      }
-      
-      // Safety check
-      if (usedDays.size >= labDays.length) {
-        console.warn('Used all available days');
-        break;
+        console.warn(`Could not find slot on ${day} for labs`);
+        dayIndex++;
       }
     }
     

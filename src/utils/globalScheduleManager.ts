@@ -9,8 +9,11 @@ export interface GlobalFacultySchedule {
 class GlobalScheduleManager {
   private static instance: GlobalScheduleManager;
   private globalSchedule: Map<string, GlobalFacultySchedule[]> = new Map();
+  private readonly STORAGE_KEY = 'faculty_global_schedule';
 
-  private constructor() {}
+  private constructor() {
+    this.loadFromStorage();
+  }
 
   static getInstance(): GlobalScheduleManager {
     if (!GlobalScheduleManager.instance) {
@@ -38,6 +41,7 @@ class GlobalScheduleManager {
     semester: number
   ): boolean {
     if (!this.isFacultyAvailable(facultyId, day, period)) {
+      console.warn(`Faculty ${facultyId} already assigned at ${day} Period ${period}`);
       return false; // Faculty is already assigned at this time
     }
 
@@ -50,6 +54,7 @@ class GlobalScheduleManager {
     });
     
     this.globalSchedule.set(facultyId, schedules);
+    this.saveToStorage();
     return true;
   }
 
@@ -63,6 +68,8 @@ class GlobalScheduleManager {
       );
       this.globalSchedule.set(facultyId, filteredSchedules);
     });
+    
+    this.saveToStorage();
   }
 
   // Get faculty's current assignments
@@ -70,9 +77,38 @@ class GlobalScheduleManager {
     return this.globalSchedule.get(facultyId) || [];
   }
 
+  // Load schedule from localStorage
+  private loadFromStorage() {
+    try {
+      const stored = localStorage.getItem(this.STORAGE_KEY);
+      if (stored) {
+        const data = JSON.parse(stored);
+        this.globalSchedule = new Map(Object.entries(data));
+      }
+    } catch (error) {
+      console.error('Failed to load global schedule from storage:', error);
+    }
+  }
+
+  // Save schedule to localStorage
+  private saveToStorage() {
+    try {
+      const data = Object.fromEntries(this.globalSchedule);
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+    } catch (error) {
+      console.error('Failed to save global schedule to storage:', error);
+    }
+  }
+
   // Clear all schedules (for testing or reset)
   clearAll() {
     this.globalSchedule.clear();
+    this.saveToStorage();
+  }
+
+  // Get all faculty schedules (for debugging or display)
+  getAllSchedules(): Map<string, GlobalFacultySchedule[]> {
+    return new Map(this.globalSchedule);
   }
 }
 

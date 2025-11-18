@@ -204,21 +204,28 @@ export const generateTimetable = (
         const timeSlot = timeSlots.find(slot => slot.day === day && slot.period === period);
         
         if (timeSlot) {
-          entries.push({
-            id: `${day}-${period}-${labSubject.faculty.id}-${batch}`,
-            timeSlot,
-            facultyId: labSubject.faculty.id,
-            facultyName: labSubject.faculty.name,
-            subject: labSubject.subject.name,
-            subjectType: 'lab',
-            batch: batch,
-            isLabContinuation: periodIndex > 0
-          });
-          
-          facultySchedule.get(labSubject.faculty.id)?.add(`${day}-${period}`);
-          globalScheduleManager.addFacultyAssignment(
+          // Try to add to global schedule first
+          const assigned = globalScheduleManager.addFacultyAssignment(
             labSubject.faculty.id, day, period, className, year, section, semester
           );
+          
+          // Only add to local schedule if global assignment succeeded
+          if (assigned) {
+            entries.push({
+              id: `${day}-${period}-${labSubject.faculty.id}-${batch}`,
+              timeSlot,
+              facultyId: labSubject.faculty.id,
+              facultyName: labSubject.faculty.name,
+              subject: labSubject.subject.name,
+              subjectType: 'lab',
+              batch: batch,
+              isLabContinuation: periodIndex > 0
+            });
+            
+            facultySchedule.get(labSubject.faculty.id)?.add(`${day}-${period}`);
+          } else {
+            console.warn(`Failed to assign ${labSubject.faculty.name} to ${day} Period ${period} - already assigned elsewhere`);
+          }
         }
       });
     };
@@ -469,38 +476,46 @@ export const generateTimetable = (
         const selected = findBestSubject();
         
         if (selected) {
-          // Allocate the subject
-          facultySchedule.get(selected.faculty.id)?.add(slotKey);
-          globalScheduleManager.addFacultyAssignment(selected.faculty.id, slot.day, slot.period, className, year, section, semester);
-          dayUsage.add(selected.subject.name);
-          periodUsage.add(selected.subject.name);
-          
-          // Increment allocation count
-          theoryPeriodsAllocated.set(
-            selected.subject.name, 
-            (theoryPeriodsAllocated.get(selected.subject.name) || 0) + 1
-          );
-          subjectWeeklyCount.set(
-            selected.subject.name, 
-            (subjectWeeklyCount.get(selected.subject.name) || 0) + 1
+          // Try to add to global schedule first
+          const assigned = globalScheduleManager.addFacultyAssignment(
+            selected.faculty.id, slot.day, slot.period, className, year, section, semester
           );
           
-          // Update daily count
-          const dailyMap = subjectDailyCount.get(selected.subject.name);
-          if (dailyMap) {
-            dailyMap.set(slot.day, (dailyMap.get(slot.day) || 0) + 1);
+          // Only allocate locally if global assignment succeeded
+          if (assigned) {
+            facultySchedule.get(selected.faculty.id)?.add(slotKey);
+            dayUsage.add(selected.subject.name);
+            periodUsage.add(selected.subject.name);
+            
+            // Increment allocation count
+            theoryPeriodsAllocated.set(
+              selected.subject.name, 
+              (theoryPeriodsAllocated.get(selected.subject.name) || 0) + 1
+            );
+            subjectWeeklyCount.set(
+              selected.subject.name, 
+              (subjectWeeklyCount.get(selected.subject.name) || 0) + 1
+            );
+            
+            // Update daily count
+            const dailyMap = subjectDailyCount.get(selected.subject.name);
+            if (dailyMap) {
+              dailyMap.set(slot.day, (dailyMap.get(slot.day) || 0) + 1);
+            }
+            
+            entries.push({
+              id: `${slot.day}-${slot.period}-${selected.faculty.id}`,
+              timeSlot: slot,
+              facultyId: selected.faculty.id,
+              facultyName: selected.faculty.name,
+              subject: selected.subject.name,
+              subjectType: 'theory'
+            });
+            
+            console.log(`Allocated ${selected.subject.name}: ${theoryPeriodsAllocated.get(selected.subject.name)}/${selected.subject.periodsPerWeek} periods`);
+          } else {
+            console.warn(`Skipped ${selected.subject.name} (${selected.faculty.name}) - faculty already assigned at ${slot.day} Period ${slot.period}`);
           }
-          
-          entries.push({
-            id: `${slot.day}-${slot.period}-${selected.faculty.id}`,
-            timeSlot: slot,
-            facultyId: selected.faculty.id,
-            facultyName: selected.faculty.name,
-            subject: selected.subject.name,
-            subjectType: 'theory'
-          });
-          
-          console.log(`Allocated ${selected.subject.name}: ${theoryPeriodsAllocated.get(selected.subject.name)}/${selected.subject.periodsPerWeek} periods`);
         }
       });
     });

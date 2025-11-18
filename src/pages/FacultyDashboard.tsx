@@ -12,6 +12,7 @@ import { Faculty, GeneratedTimetable, Subject } from '@/types/timetable';
 import { generateTimetable } from '@/utils/timetableGenerator';
 import { useToast } from '@/hooks/use-toast';
 import TimetableDisplay from '@/components/TimetableDisplay';
+import GlobalScheduleManager from '@/utils/globalScheduleManager';
 
 const FacultyDashboard = () => {
   const [user, setUser] = useState<any>(null);
@@ -246,6 +247,17 @@ const FacultyDashboard = () => {
 
     const selectedFaculties = faculties.filter(f => selectedFacultyIds.has(f.id));
     const timetable = generateTimetable(selectedFaculties, className, year, section, semester, user?.name || 'Faculty');
+    
+    // Only save and show if timetable has entries
+    if (timetable.entries.length === 0) {
+      toast({
+        title: "Warning",
+        description: "Generated timetable is empty. Some faculty may already be assigned to other classes at these times.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setGeneratedTimetable(timetable);
 
     // Save to localStorage for admin view
@@ -255,6 +267,20 @@ const FacultyDashboard = () => {
     toast({
       title: "Success",
       description: "Timetable generated successfully!",
+    });
+  };
+
+  const clearGlobalSchedule = () => {
+    const globalScheduleManager = GlobalScheduleManager.getInstance();
+    globalScheduleManager.clearAll();
+    
+    // Also clear all saved timetables
+    localStorage.removeItem('timetables');
+    setGeneratedTimetable(null);
+    
+    toast({
+      title: "Success",
+      description: "All schedules cleared. You can now generate fresh timetables.",
     });
   };
 
@@ -514,6 +540,14 @@ const FacultyDashboard = () => {
                 disabled={faculties.length === 0 || selectedFacultyIds.size === 0 || !className}
               >
                 🎯 Generate Smart Timetable
+              </Button>
+              
+              <Button 
+                onClick={clearGlobalSchedule} 
+                variant="outline"
+                className="w-full border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+              >
+                🗑️ Clear All Schedules & Start Fresh
               </Button>
             </CardContent>
           </Card>

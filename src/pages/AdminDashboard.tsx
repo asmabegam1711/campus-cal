@@ -8,6 +8,7 @@ import { Settings, LogOut, Calendar, Users, Clock, Trash2 } from 'lucide-react';
 import { GeneratedTimetable } from '@/types/timetable';
 import { useToast } from '@/hooks/use-toast';
 import TimetableDisplay from '@/components/TimetableDisplay';
+import GlobalScheduleManager from '@/utils/globalScheduleManager';
 
 const AdminDashboard = () => {
   const [user, setUser] = useState<any>(null);
@@ -39,6 +40,19 @@ const AdminDashboard = () => {
   }, [navigate]);
 
   const deleteTimetable = (timetableId: string) => {
+    const timetableToDelete = timetables.find(tt => tt.id === timetableId);
+    
+    if (timetableToDelete) {
+      // Remove faculty assignments from global schedule
+      const globalScheduleManager = GlobalScheduleManager.getInstance();
+      globalScheduleManager.removeClassAssignments(
+        timetableToDelete.className,
+        timetableToDelete.year,
+        timetableToDelete.section,
+        timetableToDelete.semester
+      );
+    }
+    
     const updatedTimetables = timetables.filter(tt => tt.id !== timetableId);
     setTimetables(updatedTimetables);
     localStorage.setItem('timetables', JSON.stringify(updatedTimetables));
@@ -49,7 +63,7 @@ const AdminDashboard = () => {
     
     toast({
       title: "Success",
-      description: "Timetable deleted successfully",
+      description: "Timetable deleted and faculty schedules updated",
     });
   };
 

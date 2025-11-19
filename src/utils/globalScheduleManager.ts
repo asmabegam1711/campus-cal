@@ -24,6 +24,9 @@ class GlobalScheduleManager {
 
   // Check if faculty is available for a specific slot
   isFacultyAvailable(facultyId: string, day: string, period: number): boolean {
+    // Always refresh from storage to ensure we have the latest assignments
+    this.loadFromStorage();
+
     const schedules = this.globalSchedule.get(facultyId) || [];
     return !schedules.some(schedule => 
       schedule.day === day && schedule.period === period
@@ -40,6 +43,9 @@ class GlobalScheduleManager {
     section: string,
     semester: number
   ): boolean {
+    // Ensure we are working against the latest state
+    this.loadFromStorage();
+
     if (!this.isFacultyAvailable(facultyId, day, period)) {
       console.warn(`Faculty ${facultyId} already assigned at ${day} Period ${period}`);
       return false; // Faculty is already assigned at this time

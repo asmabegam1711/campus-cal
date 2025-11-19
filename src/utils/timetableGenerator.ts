@@ -449,7 +449,7 @@ export const generateTimetable = (
           return candidates.length > 0 ? candidates[0] : null;
         };
 
-        const isSubjectContinuous = (currentSlot: TimeSlot, subjectName: string) => {
+        function isSubjectContinuous(currentSlot: TimeSlot, subjectName: string): boolean {
           // Check previous period
           if (currentSlot.period > 1) {
             const prevEntry = entries.find(entry => 
@@ -471,7 +471,7 @@ export const generateTimetable = (
           }
           
           return false;
-        };
+        }
 
         const selected = findBestSubject();
         

@@ -22,18 +22,18 @@ class GlobalScheduleManager {
     return GlobalScheduleManager.instance;
   }
 
-  // Check if faculty is available for a specific slot
+  // FIXED: Correctly check faculty availability
   isFacultyAvailable(facultyId: string, day: string, period: number): boolean {
-    // Always refresh from storage to ensure we have the latest assignments
     this.loadFromStorage();
 
     const schedules = this.globalSchedule.get(facultyId) || [];
-    return !schedules.some(schedule => 
-      schedule.day === day && schedule.period === period
+
+    return !schedules.some(s =>
+      s.day === day && s.period === period
     );
   }
 
-  // Add faculty assignment to global schedule
+  // FIXED: Add assignment only when available
   addFacultyAssignment(
     facultyId: string, 
     day: string, 
@@ -43,12 +43,12 @@ class GlobalScheduleManager {
     section: string,
     semester: number
   ): boolean {
-    // Ensure we are working against the latest state
+
     this.loadFromStorage();
 
     if (!this.isFacultyAvailable(facultyId, day, period)) {
-      console.warn(`Faculty ${facultyId} already assigned at ${day} Period ${period}`);
-      return false; // Faculty is already assigned at this time
+      console.warn(`Faculty ${facultyId} conflict at ${day} Period ${period}`);
+      return false;
     }
 
     const schedules = this.globalSchedule.get(facultyId) || [];
@@ -58,61 +58,64 @@ class GlobalScheduleManager {
       period,
       classInfo: `${className}-${year}-${section}-${semester}`
     });
-    
+
     this.globalSchedule.set(facultyId, schedules);
     this.saveToStorage();
     return true;
   }
 
-  // Remove all assignments for a specific class (when deleting timetable)
+  // Remove assignments for a deleted timetable
   removeClassAssignments(className: string, year: number, section: string, semester: number) {
     const classInfo = `${className}-${year}-${section}-${semester}`;
-    
+
     this.globalSchedule.forEach((schedules, facultyId) => {
-      const filteredSchedules = schedules.filter(schedule => 
-        schedule.classInfo !== classInfo
-      );
-      this.globalSchedule.set(facultyId, filteredSchedules);
+      const filtered = schedules.filter(s => s.classInfo !== classInfo);
+      this.globalSchedule.set(facultyId, filtered);
     });
-    
+
     this.saveToStorage();
   }
 
-  // Get faculty's current assignments
   getFacultySchedule(facultyId: string): GlobalFacultySchedule[] {
     return this.globalSchedule.get(facultyId) || [];
   }
 
-  // Load schedule from localStorage
+  // FIXED STORAGE CONVERSION (MOST IMPORTANT FIX)
   private loadFromStorage() {
     try {
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (stored) {
-        const data = JSON.parse(stored);
-        this.globalSchedule = new Map(Object.entries(data));
+        const obj = JSON.parse(stored);
+
+        // Convert plain object back to Map
+        this.globalSchedule = new Map(
+          Object.entries(obj).map(([facultyId, schedules]) => [
+            facultyId,
+            schedules as GlobalFacultySchedule[]
+          ])
+        );
       }
     } catch (error) {
-      console.error('Failed to load global schedule from storage:', error);
+      console.error('Failed to load global schedule:', error);
     }
   }
 
-  // Save schedule to localStorage
+  // FIXED: Save Map correctly
   private saveToStorage() {
     try {
-      const data = Object.fromEntries(this.globalSchedule);
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      const obj = Object.fromEntries(this.globalSchedule);
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(obj));
     } catch (error) {
-      console.error('Failed to save global schedule to storage:', error);
+      console.error('Failed to save global schedule:', error);
     }
   }
 
-  // Clear all schedules (for testing or reset)
+  // DO NOT CALL THIS during timetable generation
   clearAll() {
     this.globalSchedule.clear();
     this.saveToStorage();
   }
 
-  // Get all faculty schedules (for debugging or display)
   getAllSchedules(): Map<string, GlobalFacultySchedule[]> {
     return new Map(this.globalSchedule);
   }

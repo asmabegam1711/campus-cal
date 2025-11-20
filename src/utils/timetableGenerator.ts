@@ -118,8 +118,7 @@ export const generateTimetable = (
   year: number,
   section: string,
   semester: number,
-  createdBy: string,
-  existingTimetables?: GeneratedTimetable[]
+  createdBy: string
 ): GeneratedTimetable => {
   const timeSlots = generateTimeSlots().filter(slot => slot.type === 'class');
   const entries: TimetableEntry[] = [];
@@ -129,24 +128,6 @@ export const generateTimetable = (
   const globalScheduleManager = GlobalScheduleManager.getInstance();
   
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  
-  // Ensure global schedule reflects all existing timetables before generating a new one
-  globalScheduleManager.clearAll();
-  if (existingTimetables && existingTimetables.length > 0) {
-    existingTimetables.forEach(tt => {
-      tt.entries.forEach(entry => {
-        globalScheduleManager.addFacultyAssignment(
-          entry.facultyId,
-          entry.timeSlot.day,
-          entry.timeSlot.period,
-          tt.className,
-          tt.year,
-          tt.section,
-          tt.semester
-        );
-      });
-    });
-  }
   
   // Initialize tracking
   faculties.forEach(faculty => {

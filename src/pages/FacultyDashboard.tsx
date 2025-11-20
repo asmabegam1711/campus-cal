@@ -246,8 +246,7 @@ const FacultyDashboard = () => {
     }
 
     const selectedFaculties = faculties.filter(f => selectedFacultyIds.has(f.id));
-    const existingTimetables = JSON.parse(localStorage.getItem('timetables') || '[]');
-    const timetable = generateTimetable(selectedFaculties, className, year, section, semester, user?.name || 'Faculty', existingTimetables);
+    const timetable = generateTimetable(selectedFaculties, className, year, section, semester, user?.name || 'Faculty');
 
     // Only save and show if timetable has entries
     if (timetable.entries.length === 0) {
@@ -262,8 +261,8 @@ const FacultyDashboard = () => {
     setGeneratedTimetable(timetable);
 
     // Save to localStorage for admin view
-    const updatedExistingTimetables = JSON.parse(localStorage.getItem('timetables') || '[]');
-    localStorage.setItem('timetables', JSON.stringify([...updatedExistingTimetables, timetable]));
+    const existingTimetables = JSON.parse(localStorage.getItem('timetables') || '[]');
+    localStorage.setItem('timetables', JSON.stringify([...existingTimetables, timetable]));
 
     toast({
       title: "Success",

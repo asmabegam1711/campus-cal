@@ -1,6 +1,15 @@
 import { Faculty, TimeSlot, TimetableEntry, GeneratedTimetable, Subject } from '@/types/timetable';
 import GlobalScheduleManager from './globalScheduleManager';
 
+// Simple deterministic hash to vary timetables between classes/sections
+const hashStringToNumber = (value: string): number => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+};
+
 // Generate time slots based on college schedule
 export const generateTimeSlots = (): TimeSlot[] => {
   const days: Array<'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday'> = 
@@ -127,7 +136,14 @@ export const generateTimetable = (
   const subjectDailyCount: Map<string, Map<string, number>> = new Map();
   const globalScheduleManager = GlobalScheduleManager.getInstance();
   
-  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const baseDaysOfWeek: Array<'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday'> = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const classKey = `${className}-${year}-${section}-${semester}`;
+  const offset = hashStringToNumber(classKey) % baseDaysOfWeek.length;
+  const daysOfWeek = [
+    ...baseDaysOfWeek.slice(offset),
+    ...baseDaysOfWeek.slice(0, offset)
+  ];
+  
   
   // Initialize tracking
   faculties.forEach(faculty => {
@@ -156,7 +172,7 @@ export const generateTimetable = (
   const allocateLabs = () => {
     if (labSubjects.length === 0) return;
     
-    const labDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const labDays = daysOfWeek;
     const numLabs = labSubjects.length;
     
     console.log(`Allocating ${numLabs} lab subjects for ${className}`);

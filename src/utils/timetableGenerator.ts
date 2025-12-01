@@ -167,6 +167,13 @@ export const generateTimetable = (
   const theorySubjects = allSubjects.filter(s => s.subject.type === 'theory');
   const labSubjects = allSubjects.filter(s => s.subject.type === 'lab');
 
+  // Deterministically shuffle subjects per class/section using classKey
+  const sortByClassKey = (faculty: Faculty, subject: Subject) =>
+    hashStringToNumber(`${classKey}-${faculty.id}-${subject.name}`);
+
+  theorySubjects.sort((a, b) => sortByClassKey(a.faculty, a.subject) - sortByClassKey(b.faculty, b.subject));
+  labSubjects.sort((a, b) => sortByClassKey(a.faculty, a.subject) - sortByClassKey(b.faculty, b.subject));
+
   // Strategic lab allocation - exactly 3 continuous periods per lab session
   // Each batch gets exactly 1 lab per day, all labs equally distributed
   const allocateLabs = () => {

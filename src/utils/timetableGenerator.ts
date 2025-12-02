@@ -1,5 +1,4 @@
 import { Faculty, TimeSlot, TimetableEntry, GeneratedTimetable, Subject } from '@/types/timetable';
-import GlobalScheduleManager from './globalScheduleManager';
 
 // Simple deterministic hash to vary timetables between classes/sections
 const hashStringToNumber = (value: string): number => {
@@ -134,7 +133,6 @@ export const generateTimetable = (
   const facultySchedule: Map<string, Set<string>> = new Map();
   const subjectWeeklyCount: Map<string, number> = new Map();
   const subjectDailyCount: Map<string, Map<string, number>> = new Map();
-  const globalScheduleManager = GlobalScheduleManager.getInstance();
   
   const baseDaysOfWeek: Array<'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday'> = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const classKey = `${className}-${year}-${section}-${semester}`;
@@ -402,13 +400,12 @@ export const generateTimetable = (
           
           if (needsAllocation.length === 0) return null;
           
-          // For continuous allocation, prioritize continuing subjects
+      // For continuous allocation, prioritize continuing subjects
           const continuousSubjects = needsAllocation.filter(({faculty, subject}) => {
             if (subject.allocation !== 'continuous') return false;
             const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
-            const isGloballyFree = globalScheduleManager.isFacultyAvailable(faculty.id, slot.day, slot.period);
             const isContinuous = isSubjectContinuous(slot, subject.name);
-            return isFacultyFree && isGloballyFree && isContinuous;
+            return isFacultyFree && isContinuous;
           });
           
           if (continuousSubjects.length > 0) return continuousSubjects[0];

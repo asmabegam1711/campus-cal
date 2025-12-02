@@ -1,13 +1,37 @@
 import { Faculty, TimeSlot, TimetableEntry, GeneratedTimetable, Subject } from '@/types/timetable';
 
-// Simple deterministic hash to vary timetables between classes/sections
+// Enhanced deterministic hash for better variation between classes/sections
 const hashStringToNumber = (value: string): number => {
-  let hash = 0;
+  let hash = 5381;
   for (let i = 0; i < value.length; i++) {
-    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+    hash = ((hash << 5) + hash) ^ value.charCodeAt(i);
+    hash = hash >>> 0; // Keep as unsigned 32-bit
   }
   return hash;
 };
+
+// Seeded random number generator for deterministic but varied results
+class SeededRandom {
+  private seed: number;
+  
+  constructor(seed: number) {
+    this.seed = seed;
+  }
+  
+  next(): number {
+    this.seed = (this.seed * 1103515245 + 12345) & 0x7fffffff;
+    return this.seed / 0x7fffffff;
+  }
+  
+  shuffle<T>(array: T[]): T[] {
+    const result = [...array];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(this.next() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+}
 
 // Generate time slots based on college schedule
 export const generateTimeSlots = (): TimeSlot[] => {
@@ -134,13 +158,14 @@ export const generateTimetable = (
   const subjectWeeklyCount: Map<string, number> = new Map();
   const subjectDailyCount: Map<string, Map<string, number>> = new Map();
   
-  const baseDaysOfWeek: Array<'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday'> = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  // Create seeded random generator for this specific class/section
   const classKey = `${className}-${year}-${section}-${semester}`;
-  const offset = hashStringToNumber(classKey) % baseDaysOfWeek.length;
-  const daysOfWeek = [
-    ...baseDaysOfWeek.slice(offset),
-    ...baseDaysOfWeek.slice(0, offset)
-  ];
+  const seed = hashStringToNumber(classKey);
+  const rng = new SeededRandom(seed);
+  
+  const baseDaysOfWeek: Array<'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday'> = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  // Shuffle days based on classKey for unique ordering per section
+  const daysOfWeek = rng.shuffle(baseDaysOfWeek);
   
   
   // Initialize tracking
@@ -165,20 +190,17 @@ export const generateTimetable = (
   const theorySubjects = allSubjects.filter(s => s.subject.type === 'theory');
   const labSubjects = allSubjects.filter(s => s.subject.type === 'lab');
 
-  // Deterministically shuffle subjects per class/section using classKey
-  const sortByClassKey = (faculty: Faculty, subject: Subject) =>
-    hashStringToNumber(`${classKey}-${faculty.id}-${subject.name}`);
-
-  theorySubjects.sort((a, b) => sortByClassKey(a.faculty, a.subject) - sortByClassKey(b.faculty, b.subject));
-  labSubjects.sort((a, b) => sortByClassKey(a.faculty, a.subject) - sortByClassKey(b.faculty, b.subject));
+  // Shuffle subjects using seeded random for unique arrangement per section
+  const shuffledTheorySubjects = rng.shuffle(theorySubjects);
+  const shuffledLabSubjects = rng.shuffle(labSubjects);
 
   // Strategic lab allocation - exactly 3 continuous periods per lab session
   // Each batch gets exactly 1 lab per day, all labs equally distributed
   const allocateLabs = () => {
-    if (labSubjects.length === 0) return;
+    if (shuffledLabSubjects.length === 0) return;
     
     const labDays = daysOfWeek;
-    const numLabs = labSubjects.length;
+    const numLabs = shuffledLabSubjects.length;
     
     console.log(`Allocating ${numLabs} lab subjects for ${className}`);
     
@@ -250,14 +272,14 @@ export const generateTimetable = (
       const batchALabIndex = i;
       const batchBLabIndex = (i + Math.floor(numLabs / 2) + (numLabs % 2)) % numLabs;
       
-      const batchALab = labSubjects[batchALabIndex];
-      const batchBLab = labSubjects[batchBLabIndex];
+      const batchALab = shuffledLabSubjects[batchALabIndex];
+      const batchBLab = shuffledLabSubjects[batchBLabIndex];
       
       // Check if both labs are already allocated
       if (batchAAllocated.has(batchALab.subject.name) && batchBAllocated.has(batchBLab.subject.name)) {
         // Try to find unallocated labs
-        const unallocatedA = labSubjects.find(ls => !batchAAllocated.has(ls.subject.name));
-        const unallocatedB = labSubjects.find(ls => 
+        const unallocatedA = shuffledLabSubjects.find(ls => !batchAAllocated.has(ls.subject.name));
+        const unallocatedB = shuffledLabSubjects.find(ls => 
           !batchBAllocated.has(ls.subject.name) && ls.subject.name !== unallocatedA?.subject.name
         );
         
@@ -287,11 +309,11 @@ export const generateTimetable = (
       
       // Skip if already allocated
       if (batchAAllocated.has(labA.subject.name)) {
-        labA = labSubjects.find(ls => !batchAAllocated.has(ls.subject.name)) || labA;
+        labA = shuffledLabSubjects.find(ls => !batchAAllocated.has(ls.subject.name)) || labA;
       }
       
       if (batchBAllocated.has(labB.subject.name) || labB.subject.name === labA.subject.name) {
-        labB = labSubjects.find(ls => 
+        labB = shuffledLabSubjects.find(ls => 
           !batchBAllocated.has(ls.subject.name) && ls.subject.name !== labA.subject.name
         ) || labB;
       }
@@ -329,16 +351,16 @@ export const generateTimetable = (
     console.log(`Batch A allocated: ${Array.from(batchAAllocated).join(', ')}`);
     console.log(`Batch B allocated: ${Array.from(batchBAllocated).join(', ')}`);
     
-    if (batchAAllocated.size < labSubjects.length) {
-      console.warn(`Missing labs for Batch A: ${labSubjects.filter(ls => !batchAAllocated.has(ls.subject.name)).map(ls => ls.subject.name).join(', ')}`);
+    if (batchAAllocated.size < shuffledLabSubjects.length) {
+      console.warn(`Missing labs for Batch A: ${shuffledLabSubjects.filter(ls => !batchAAllocated.has(ls.subject.name)).map(ls => ls.subject.name).join(', ')}`);
     }
     
-    if (batchBAllocated.size < labSubjects.length) {
-      console.warn(`Missing labs for Batch B: ${labSubjects.filter(ls => !batchBAllocated.has(ls.subject.name)).map(ls => ls.subject.name).join(', ')}`);
+    if (batchBAllocated.size < shuffledLabSubjects.length) {
+      console.warn(`Missing labs for Batch B: ${shuffledLabSubjects.filter(ls => !batchBAllocated.has(ls.subject.name)).map(ls => ls.subject.name).join(', ')}`);
     }
     
     // Update weekly counts
-    labSubjects.forEach(ls => {
+    shuffledLabSubjects.forEach(ls => {
       const countA = batchAAllocated.has(ls.subject.name) ? 1 : 0;
       const countB = batchBAllocated.has(ls.subject.name) ? 1 : 0;
       subjectWeeklyCount.set(ls.subject.name, (countA + countB) * 3);
@@ -358,7 +380,7 @@ export const generateTimetable = (
 
     // Track how many periods allocated for each theory subject
     const theoryPeriodsAllocated = new Map<string, number>();
-    theorySubjects.forEach(ts => theoryPeriodsAllocated.set(ts.subject.name, 0));
+    shuffledTheorySubjects.forEach(ts => theoryPeriodsAllocated.set(ts.subject.name, 0));
     
     // Track period-wise subject usage
     const periodSubjectUsage: Map<number, Set<string>> = new Map();
@@ -394,7 +416,7 @@ export const generateTimetable = (
         // Find best subject that hasn't reached its required periods
         const findBestSubject = () => {
           // Filter subjects that still need allocation
-          const needsAllocation = theorySubjects.filter(({subject}) => 
+          const needsAllocation = shuffledTheorySubjects.filter(({subject}) => 
             !isSubjectComplete(subject.name, subject.periodsPerWeek)
           );
           

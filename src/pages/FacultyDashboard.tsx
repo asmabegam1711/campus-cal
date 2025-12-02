@@ -274,13 +274,12 @@ const FacultyDashboard = () => {
     const globalScheduleManager = GlobalScheduleManager.getInstance();
     globalScheduleManager.clearAll();
     
-    // Also clear all saved timetables
-    localStorage.removeItem('timetables');
+    // Only clear the currently displayed timetable, NOT saved ones in Admin Dashboard
     setGeneratedTimetable(null);
     
     toast({
       title: "Success",
-      description: "All schedules cleared. You can now generate fresh timetables.",
+      description: "Current view cleared. Saved timetables are still available in Admin Dashboard.",
     });
   };
 

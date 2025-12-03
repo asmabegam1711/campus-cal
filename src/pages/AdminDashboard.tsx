@@ -67,6 +67,20 @@ const AdminDashboard = () => {
     });
   };
 
+  const deleteAllTimetables = () => {
+    const globalScheduleManager = GlobalScheduleManager.getInstance();
+    globalScheduleManager.clearAll();
+    
+    setTimetables([]);
+    setSelectedTimetable(null);
+    localStorage.removeItem('timetables');
+    
+    toast({
+      title: "Success",
+      description: "All timetables deleted successfully",
+    });
+  };
+
   const handleTimetableUpdate = (updatedTimetable: GeneratedTimetable) => {
     const updatedTimetables = timetables.map(tt => 
       tt.id === updatedTimetable.id ? updatedTimetable : tt
@@ -207,11 +221,23 @@ const AdminDashboard = () => {
 
           <TabsContent value="timetables" className="space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle>All Generated Timetables</CardTitle>
-                <CardDescription>
-                  Complete list of all timetables in the system
-                </CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>All Generated Timetables</CardTitle>
+                  <CardDescription>
+                    Complete list of all timetables in the system
+                  </CardDescription>
+                </div>
+                {timetables.length > 0 && (
+                  <Button
+                    variant="destructive"
+                    onClick={deleteAllTimetables}
+                    className="gap-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete All Timetables
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 {timetables.length === 0 ? (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GeneratedTimetable, TimetableEntry, Faculty } from '@/types/timetable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +24,12 @@ const TimetableDisplay = ({ timetable, onDelete, onUpdate, availableFaculties = 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editedTimetable, setEditedTimetable] = useState<GeneratedTimetable>(timetable);
   const { toast } = useToast();
+
+  // Update editedTimetable when timetable prop changes
+  useEffect(() => {
+    setEditedTimetable(timetable);
+    setIsEditMode(false);
+  }, [timetable.id]);
   
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const periods = [1, 2, 3, 4, 5, 6, 7, 8];

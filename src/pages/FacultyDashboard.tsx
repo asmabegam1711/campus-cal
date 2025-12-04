@@ -18,10 +18,10 @@ const FacultyDashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [selectedFacultyIds, setSelectedFacultyIds] = useState<Set<string>>(new Set());
-  const [newFaculty, setNewFaculty] = useState({ 
+  const [newFaculty, setNewFaculty] = useState<{ name: string; id: string; subjects: Subject[] }>({ 
     name: '', 
     id: '', 
-    subjects: [{ name: '', type: 'theory' as const, periodsPerWeek: 4, allocation: 'random' as const }] 
+    subjects: [{ name: '', type: 'theory', periodsPerWeek: 4, allocation: 'random' }] 
   });
   const [editingFaculty, setEditingFaculty] = useState<Faculty | null>(null);
   const [editFacultyForm, setEditFacultyForm] = useState<{ name: string; subjects: Subject[] } | null>(null);
@@ -62,7 +62,7 @@ const FacultyDashboard = () => {
   const addSubject = () => {
     setNewFaculty(prev => ({
       ...prev,
-      subjects: [...prev.subjects, { name: '', type: 'theory', periodsPerWeek: 4, allocation: 'random' }]
+      subjects: [...prev.subjects, { name: '', type: 'theory' as const, periodsPerWeek: 4, allocation: 'random' as const }]
     }));
   };
 
@@ -121,7 +121,7 @@ const FacultyDashboard = () => {
 
     setFaculties(prev => [...prev, faculty]);
     setSelectedFacultyIds(prev => new Set([...prev, faculty.id])); // Auto-select newly added faculty
-    setNewFaculty({ name: '', id: '', subjects: [{ name: '', type: 'theory', periodsPerWeek: 4, allocation: 'random' }] });
+    setNewFaculty({ name: '', id: '', subjects: [{ name: '', type: 'theory' as const, periodsPerWeek: 4, allocation: 'random' as const }] });
     
     toast({
       title: "Success",
@@ -160,7 +160,7 @@ const FacultyDashboard = () => {
     if (!editFacultyForm) return;
     setEditFacultyForm(prev => ({
       ...prev!,
-      subjects: [...prev!.subjects, { name: '', type: 'theory', periodsPerWeek: 4, allocation: 'random' }]
+      subjects: [...prev!.subjects, { name: '', type: 'theory' as const, periodsPerWeek: 4, allocation: 'random' as const }]
     }));
   };
 
@@ -397,6 +397,21 @@ const FacultyDashboard = () => {
                           <option value="continuous">Continuous Allocation</option>
                         </select>
                       </div>
+                      {subject.allocation === 'continuous' && subject.type === 'theory' && (
+                        <div className="flex gap-2 items-center">
+                          <Label className="text-xs whitespace-nowrap">Continuous Periods:</Label>
+                          <Input
+                            type="number"
+                            placeholder="Count"
+                            value={subject.continuousPeriods || subject.periodsPerWeek}
+                            onChange={(e) => updateSubject(index, 'continuousPeriods', parseInt(e.target.value) || 2)}
+                            className="w-20"
+                            min={2}
+                            max={subject.periodsPerWeek}
+                          />
+                          <span className="text-xs text-muted-foreground">(placed on same day)</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                   <Button type="button" variant="outline" onClick={addSubject} className="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white border-none hover:from-green-600 hover:to-blue-600">
@@ -645,6 +660,21 @@ const FacultyDashboard = () => {
                             <option value="continuous">Continuous Allocation</option>
                           </select>
                         </div>
+                        {subject.allocation === 'continuous' && subject.type === 'theory' && (
+                          <div className="flex gap-2 items-center">
+                            <Label className="text-xs whitespace-nowrap">Continuous Periods:</Label>
+                            <Input
+                              type="number"
+                              placeholder="Count"
+                              value={subject.continuousPeriods || subject.periodsPerWeek}
+                              onChange={(e) => updateEditSubject(index, 'continuousPeriods', parseInt(e.target.value) || 2)}
+                              className="w-20"
+                              min={2}
+                              max={subject.periodsPerWeek}
+                            />
+                            <span className="text-xs text-muted-foreground">(placed on same day)</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                     <Button type="button" variant="outline" onClick={addEditSubject} className="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white border-none hover:from-green-600 hover:to-blue-600">

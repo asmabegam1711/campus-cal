@@ -1,4 +1,5 @@
 import { Faculty, TimeSlot, TimetableEntry, GeneratedTimetable, Subject } from '@/types/timetable';
+import GlobalScheduleManager from './globalScheduleManager';
 
 // Enhanced deterministic hash for better variation between classes/sections
 const hashStringToNumber = (value: string): number => {
@@ -158,6 +159,9 @@ export const generateTimetable = (
   const subjectWeeklyCount: Map<string, number> = new Map();
   const subjectDailyCount: Map<string, Map<string, number>> = new Map();
   
+  // Get global schedule manager instance to prevent cross-section faculty clashes
+  const globalScheduleManager = GlobalScheduleManager.getInstance();
+  
   // Create seeded random generator for this specific class/section
   const classKey = `${className}-${year}-${section}-${semester}`;
   const seed = hashStringToNumber(classKey);
@@ -216,13 +220,18 @@ export const generateTimetable = (
         const canAllocate = periodsNeeded.every(period => {
           if (period > 8) return false;
           
-          // Check if slot is free locally within this class timetable only
+          // Check if slot is free locally within this class timetable
           const hasLocalConflict = entries.some(entry => 
             entry.timeSlot.day === day && entry.timeSlot.period === period
           );
+          if (hasLocalConflict) return false;
           
-          // We no longer consider global faculty schedule here so sections are independent
-          return !hasLocalConflict;
+          // Check global faculty availability for all faculty members
+          const hasGlobalConflict = facultyIds.some(facultyId => 
+            !globalScheduleManager.isFacultyAvailable(facultyId, day, period)
+          );
+          
+          return !hasGlobalConflict;
         });
 
         if (canAllocate) {
@@ -243,7 +252,17 @@ export const generateTimetable = (
         const timeSlot = timeSlots.find(slot => slot.day === day && slot.period === period);
         
         if (timeSlot) {
-          // We no longer record in global schedule so sections can reuse faculty slots independently
+          // Register in global schedule to prevent cross-section clashes
+          globalScheduleManager.addFacultyAssignment(
+            labSubject.faculty.id,
+            day,
+            period,
+            className,
+            year,
+            section,
+            semester
+          );
+          
           entries.push({
             id: `${day}-${period}-${labSubject.faculty.id}-${batch}`,
             timeSlot,
@@ -429,10 +448,15 @@ export const generateTimetable = (
         const consecutive = [];
         for (let j = 0; j < count; j++) {
           if (availablePeriods[i + j] === availablePeriods[i] + j) {
-            // Check if faculty is free
-            const slotKey = `${day}-${availablePeriods[i + j]}`;
-            if (!facultySchedule.get(facultyId)?.has(slotKey)) {
-              consecutive.push(availablePeriods[i + j]);
+            const period = availablePeriods[i + j];
+            const slotKey = `${day}-${period}`;
+            // Check local faculty schedule
+            const isLocallyFree = !facultySchedule.get(facultyId)?.has(slotKey);
+            // Check global faculty availability across all sections
+            const isGloballyFree = globalScheduleManager.isFacultyAvailable(facultyId, day, period);
+            
+            if (isLocallyFree && isGloballyFree) {
+              consecutive.push(period);
             } else {
               break;
             }
@@ -470,6 +494,18 @@ export const generateTimetable = (
             const slot = timeSlots.find(s => s.day === day && s.period === period);
             if (slot) {
               const slotKey = `${day}-${period}`;
+              
+              // Register in global schedule to prevent cross-section clashes
+              globalScheduleManager.addFacultyAssignment(
+                faculty.id,
+                day,
+                period,
+                className,
+                year,
+                section,
+                semester
+              );
+              
               facultySchedule.get(faculty.id)?.add(slotKey);
               dailySubjectUsage.get(day)?.add(subject.name);
               periodSubjectUsage.get(period)?.add(subject.name);
@@ -531,6 +567,18 @@ export const generateTimetable = (
             const slot = timeSlots.find(s => s.day === day && s.period === period);
             if (slot) {
               const slotKey = `${day}-${period}`;
+              
+              // Register in global schedule to prevent cross-section clashes
+              globalScheduleManager.addFacultyAssignment(
+                faculty.id,
+                day,
+                period,
+                className,
+                year,
+                section,
+                semester
+              );
+              
               facultySchedule.get(faculty.id)?.add(slotKey);
               dailySubjectUsage.get(day)?.add(subject.name);
               periodSubjectUsage.get(period)?.add(subject.name);
@@ -607,42 +655,49 @@ export const generateTimetable = (
           
           if (continuousSubjects.length > 0) return continuousSubjects[0];
           
+          // Check both local and global faculty availability
+          const isFacultyAvailable = (facultyId: string, day: string, period: number) => {
+            const localKey = `${day}-${period}`;
+            const isLocallyFree = !facultySchedule.get(facultyId)?.has(localKey);
+            const isGloballyFree = globalScheduleManager.isFacultyAvailable(facultyId, day, period);
+            return isLocallyFree && isGloballyFree;
+          };
+          
           // Priority 1: New subject for period and day
           let candidates = needsAllocation.filter(({faculty, subject}) => {
-            const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
+            const isFree = isFacultyAvailable(faculty.id, slot.day, slot.period);
             const notUsedInPeriod = !periodUsage.has(subject.name);
             const notUsedToday = !dayUsage.has(subject.name);
             const continuousCheck = subject.allocation === 'random' ? !isSubjectContinuous(slot, subject.name) : true;
             
-            return isFacultyFree && notUsedInPeriod && notUsedToday && continuousCheck;
+            return isFree && notUsedInPeriod && notUsedToday && continuousCheck;
           });
           
           if (candidates.length === 0) {
             // Priority 2: New subject for period
             candidates = needsAllocation.filter(({faculty, subject}) => {
-              const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
+              const isFree = isFacultyAvailable(faculty.id, slot.day, slot.period);
               const notUsedInPeriod = !periodUsage.has(subject.name);
               const continuousCheck = subject.allocation === 'random' ? !isSubjectContinuous(slot, subject.name) : true;
               
-              return isFacultyFree && notUsedInPeriod && continuousCheck;
+              return isFree && notUsedInPeriod && continuousCheck;
             });
           }
           
           if (candidates.length === 0) {
-            // Priority 3: Faculty free within this class timetable
+            // Priority 3: Faculty free both locally and globally
             candidates = needsAllocation.filter(({faculty, subject}) => {
-              const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
+              const isFree = isFacultyAvailable(faculty.id, slot.day, slot.period);
               const continuousCheck = subject.allocation === 'random' ? !isSubjectContinuous(slot, subject.name) : true;
               
-              return isFacultyFree && continuousCheck;
+              return isFree && continuousCheck;
             });
           }
           
           if (candidates.length === 0) {
-            // Priority 4: Just faculty free (fallback)
+            // Priority 4: Just faculty free (fallback - still check global)
             candidates = needsAllocation.filter(({faculty}) => {
-              const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);
-              return isFacultyFree;
+              return isFacultyAvailable(faculty.id, slot.day, slot.period);
             });
           }
           
@@ -676,7 +731,17 @@ export const generateTimetable = (
         const selected = findBestSubject();
         
         if (selected) {
-          // Only check local faculty schedule so each class/section timetable is independent
+          // Register in global schedule to prevent cross-section clashes
+          globalScheduleManager.addFacultyAssignment(
+            selected.faculty.id,
+            slot.day,
+            slot.period,
+            className,
+            year,
+            section,
+            semester
+          );
+          
           facultySchedule.get(selected.faculty.id)?.add(slotKey);
           dayUsage.add(selected.subject.name);
           periodUsage.add(selected.subject.name);

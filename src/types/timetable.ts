@@ -3,6 +3,7 @@ export interface Subject {
   type: 'theory' | 'lab';
   periodsPerWeek: number;
   allocation: 'continuous' | 'random';
+  continuousPeriods?: number; // Number of periods to be placed continuously on the same day
 }
 
 export interface Faculty {

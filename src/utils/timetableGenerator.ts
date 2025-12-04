@@ -371,6 +371,19 @@ export const generateTimetable = (
 
   // Smart theory allocation - allocate exactly periodsPerWeek for each subject
   const allocateTheorySubjects = () => {
+    // Identify days that have labs (3 continuous lab periods)
+    const labDays = new Set<string>();
+    daysOfWeek.forEach(day => {
+      const labEntriesOnDay = entries.filter(entry => 
+        entry.timeSlot.day === day && entry.subjectType === 'lab'
+      );
+      if (labEntriesOnDay.length >= 3) {
+        labDays.add(day);
+      }
+    });
+    
+    console.log(`Lab days identified: ${Array.from(labDays).join(', ')}`);
+
     const availableSlots = timeSlots.filter(slot => {
       return !entries.some(entry => 
         entry.timeSlot.day === slot.day && 
@@ -381,6 +394,9 @@ export const generateTimetable = (
     // Track how many periods allocated for each theory subject
     const theoryPeriodsAllocated = new Map<string, number>();
     shuffledTheorySubjects.forEach(ts => theoryPeriodsAllocated.set(ts.subject.name, 0));
+    
+    // Track which day each continuous subject is assigned to
+    const continuousSubjectDay = new Map<string, string>();
     
     // Track period-wise subject usage
     const periodSubjectUsage: Map<number, Set<string>> = new Map();
@@ -404,7 +420,160 @@ export const generateTimetable = (
       return (theoryPeriodsAllocated.get(subjectName) || 0) >= requiredPeriods;
     };
 
-    // Allocate subjects day by day
+    // Helper to find N continuous available periods on a day
+    const findContinuousPeriods = (day: string, count: number, facultyId: string) => {
+      const daySlots = slotsByDay.get(day) || [];
+      const availablePeriods = daySlots.map(s => s.period).sort((a, b) => a - b);
+      
+      for (let i = 0; i <= availablePeriods.length - count; i++) {
+        const consecutive = [];
+        for (let j = 0; j < count; j++) {
+          if (availablePeriods[i + j] === availablePeriods[i] + j) {
+            // Check if faculty is free
+            const slotKey = `${day}-${availablePeriods[i + j]}`;
+            if (!facultySchedule.get(facultyId)?.has(slotKey)) {
+              consecutive.push(availablePeriods[i + j]);
+            } else {
+              break;
+            }
+          } else {
+            break;
+          }
+        }
+        if (consecutive.length === count) {
+          return consecutive;
+        }
+      }
+      return null;
+    };
+
+    // First, pre-allocate continuous subjects with 3+ periods to avoid lab days
+    const continuousSubjects3Plus = shuffledTheorySubjects.filter(
+      ts => ts.subject.allocation === 'continuous' && (ts.subject.continuousPeriods || ts.subject.periodsPerWeek) >= 3
+    );
+    
+    continuousSubjects3Plus.forEach(({ faculty, subject }) => {
+      const continuousCount = subject.continuousPeriods || subject.periodsPerWeek;
+      // Find a non-lab day for this subject
+      const nonLabDays = daysOfWeek.filter(day => !labDays.has(day));
+      const shuffledNonLabDays = rng.shuffle([...nonLabDays]);
+      
+      // Also consider lab days as fallback
+      const allDaysToTry = [...shuffledNonLabDays, ...Array.from(labDays)];
+      
+      for (const day of allDaysToTry) {
+        const periods = findContinuousPeriods(day, continuousCount, faculty.id);
+        
+        if (periods) {
+          // Allocate all continuous periods on this day
+          periods.forEach(period => {
+            const slot = timeSlots.find(s => s.day === day && s.period === period);
+            if (slot) {
+              const slotKey = `${day}-${period}`;
+              facultySchedule.get(faculty.id)?.add(slotKey);
+              dailySubjectUsage.get(day)?.add(subject.name);
+              periodSubjectUsage.get(period)?.add(subject.name);
+              
+              theoryPeriodsAllocated.set(
+                subject.name, 
+                (theoryPeriodsAllocated.get(subject.name) || 0) + 1
+              );
+              subjectWeeklyCount.set(
+                subject.name, 
+                (subjectWeeklyCount.get(subject.name) || 0) + 1
+              );
+              
+              const dailyMap = subjectDailyCount.get(subject.name);
+              if (dailyMap) {
+                dailyMap.set(day, (dailyMap.get(day) || 0) + 1);
+              }
+              
+              entries.push({
+                id: `${day}-${period}-${faculty.id}`,
+                timeSlot: slot,
+                facultyId: faculty.id,
+                facultyName: faculty.name,
+                subject: subject.name,
+                subjectType: 'theory'
+              });
+              
+              // Remove from available slots
+              const slotIndex = (slotsByDay.get(day) || []).findIndex(s => s.period === period);
+              if (slotIndex !== -1) {
+                slotsByDay.get(day)?.splice(slotIndex, 1);
+              }
+            }
+          });
+          
+          continuousSubjectDay.set(subject.name, day);
+          console.log(`Pre-allocated ${subject.name} (${continuousCount} continuous) on ${day} (non-lab day: ${!labDays.has(day)})`);
+          break;
+        }
+      }
+    });
+
+    // Now handle continuous subjects with less than 3 periods
+    const continuousSubjectsLess3 = shuffledTheorySubjects.filter(
+      ts => ts.subject.allocation === 'continuous' && (ts.subject.continuousPeriods || ts.subject.periodsPerWeek) < 3 && (ts.subject.continuousPeriods || ts.subject.periodsPerWeek) > 1
+    );
+    
+    continuousSubjectsLess3.forEach(({ faculty, subject }) => {
+      if (isSubjectComplete(subject.name, subject.periodsPerWeek)) return;
+      
+      const continuousCount = subject.continuousPeriods || subject.periodsPerWeek;
+      const shuffledDays = rng.shuffle([...daysOfWeek]);
+      
+      for (const day of shuffledDays) {
+        const periods = findContinuousPeriods(day, continuousCount, faculty.id);
+        
+        if (periods) {
+          periods.forEach(period => {
+            const slot = timeSlots.find(s => s.day === day && s.period === period);
+            if (slot) {
+              const slotKey = `${day}-${period}`;
+              facultySchedule.get(faculty.id)?.add(slotKey);
+              dailySubjectUsage.get(day)?.add(subject.name);
+              periodSubjectUsage.get(period)?.add(subject.name);
+              
+              theoryPeriodsAllocated.set(
+                subject.name, 
+                (theoryPeriodsAllocated.get(subject.name) || 0) + 1
+              );
+              subjectWeeklyCount.set(
+                subject.name, 
+                (subjectWeeklyCount.get(subject.name) || 0) + 1
+              );
+              
+              const dailyMap = subjectDailyCount.get(subject.name);
+              if (dailyMap) {
+                dailyMap.set(day, (dailyMap.get(day) || 0) + 1);
+              }
+              
+              entries.push({
+                id: `${day}-${period}-${faculty.id}`,
+                timeSlot: slot,
+                facultyId: faculty.id,
+                facultyName: faculty.name,
+                subject: subject.name,
+                subjectType: 'theory'
+              });
+              
+              const slotIndex = (slotsByDay.get(day) || []).findIndex(s => s.period === period);
+              if (slotIndex !== -1) {
+                slotsByDay.get(day)?.splice(slotIndex, 1);
+              }
+            }
+          });
+          
+          continuousSubjectDay.set(subject.name, day);
+          console.log(`Pre-allocated ${subject.name} (${continuousCount} continuous) on ${day}`);
+          break;
+        }
+      }
+    });
+
+    // Allocate remaining periods for continuous subjects (if periodsPerWeek > continuousPeriods)
+    // and all periods for random subjects
     daysOfWeek.forEach(day => {
       const daySlots = slotsByDay.get(day) || [];
       const dayUsage = dailySubjectUsage.get(day) || new Set();
@@ -412,6 +581,12 @@ export const generateTimetable = (
       daySlots.forEach(slot => {
         const slotKey = `${slot.day}-${slot.period}`;
         const periodUsage = periodSubjectUsage.get(slot.period) || new Set();
+        
+        // Check if this slot is already allocated
+        const isSlotTaken = entries.some(e => 
+          e.timeSlot.day === slot.day && e.timeSlot.period === slot.period
+        );
+        if (isSlotTaken) return;
         
         // Find best subject that hasn't reached its required periods
         const findBestSubject = () => {
@@ -422,7 +597,7 @@ export const generateTimetable = (
           
           if (needsAllocation.length === 0) return null;
           
-      // For continuous allocation, prioritize continuing subjects
+          // For continuous allocation, prioritize continuing subjects
           const continuousSubjects = needsAllocation.filter(({faculty, subject}) => {
             if (subject.allocation !== 'continuous') return false;
             const isFacultyFree = !facultySchedule.get(faculty.id)?.has(slotKey);

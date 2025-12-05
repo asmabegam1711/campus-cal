@@ -1,5 +1,8 @@
-import { Faculty, TimeSlot, TimetableEntry, GeneratedTimetable, Subject } from '@/types/timetable';
+import { Faculty, TimeSlot, TimetableEntry, GeneratedTimetable, Subject, AllocationWarning } from '@/types/timetable';
 import GlobalScheduleManager from './globalScheduleManager';
+
+// Track allocation warnings for reporting
+let allocationWarnings: AllocationWarning[] = [];
 
 // Enhanced deterministic hash for better variation between classes/sections
 const hashStringToNumber = (value: string): number => {
@@ -158,6 +161,9 @@ export const generateTimetable = (
   const facultySchedule: Map<string, Set<string>> = new Map();
   const subjectWeeklyCount: Map<string, number> = new Map();
   const subjectDailyCount: Map<string, Map<string, number>> = new Map();
+  
+  // Reset allocation warnings for this generation
+  allocationWarnings = [];
   
   // Get global schedule manager instance to prevent cross-section faculty clashes
   const globalScheduleManager = GlobalScheduleManager.getInstance();
@@ -779,6 +785,42 @@ export const generateTimetable = (
 
   allocateTheorySubjects();
 
+  // Check for incomplete allocations and generate warnings
+  const checkIncompleteAllocations = () => {
+    // Check theory subjects
+    shuffledTheorySubjects.forEach(({ faculty, subject }) => {
+      const allocated = subjectWeeklyCount.get(subject.name) || 0;
+      if (allocated < subject.periodsPerWeek) {
+        allocationWarnings.push({
+          subjectName: subject.name,
+          facultyName: faculty.name,
+          facultyId: faculty.id,
+          requestedPeriods: subject.periodsPerWeek,
+          allocatedPeriods: allocated,
+          reason: `Faculty "${faculty.name}" (${faculty.id}) is already assigned to other sections during available time slots`
+        });
+      }
+    });
+
+    // Check lab subjects
+    shuffledLabSubjects.forEach(({ faculty, subject }) => {
+      const allocated = subjectWeeklyCount.get(subject.name) || 0;
+      const expectedLabPeriods = subject.periodsPerWeek; // Labs are counted per session
+      if (allocated < expectedLabPeriods) {
+        allocationWarnings.push({
+          subjectName: subject.name,
+          facultyName: faculty.name,
+          facultyId: faculty.id,
+          requestedPeriods: expectedLabPeriods,
+          allocatedPeriods: allocated,
+          reason: `Faculty "${faculty.name}" (${faculty.id}) has conflicts with other sections for lab sessions`
+        });
+      }
+    });
+  };
+
+  checkIncompleteAllocations();
+
   return {
     id: Date.now().toString(),
     className,
@@ -793,6 +835,7 @@ export const generateTimetable = (
       return a.timeSlot.period - b.timeSlot.period;
     }),
     createdAt: new Date(),
-    createdBy
+    createdBy,
+    warnings: allocationWarnings.length > 0 ? allocationWarnings : undefined
   };
 };

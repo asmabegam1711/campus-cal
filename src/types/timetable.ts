@@ -32,6 +32,15 @@ export interface TimetableEntry {
   isLabContinuation?: boolean;
 }
 
+export interface AllocationWarning {
+  subjectName: string;
+  facultyName: string;
+  facultyId: string;
+  requestedPeriods: number;
+  allocatedPeriods: number;
+  reason: string;
+}
+
 export interface GeneratedTimetable {
   id: string;
   className: string;
@@ -41,6 +50,7 @@ export interface GeneratedTimetable {
   entries: TimetableEntry[];
   createdAt: Date;
   createdBy: string;
+  warnings?: AllocationWarning[];
 }
 
 export interface LoginUser {

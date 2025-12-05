@@ -17,7 +17,8 @@ import GlobalScheduleManager from '@/utils/globalScheduleManager';
 const FacultyDashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [faculties, setFaculties] = useState<Faculty[]>([]);
-  const [selectedFacultyIds, setSelectedFacultyIds] = useState<Set<string>>(new Set());
+  // Map of facultyId -> Set of selected subject indices
+  const [selectedSubjects, setSelectedSubjects] = useState<Map<string, Set<number>>>(new Map());
   const [newFaculty, setNewFaculty] = useState<{ name: string; id: string; subjects: Subject[] }>({ 
     name: '', 
     id: '', 
@@ -120,7 +121,12 @@ const FacultyDashboard = () => {
     };
 
     setFaculties(prev => [...prev, faculty]);
-    setSelectedFacultyIds(prev => new Set([...prev, faculty.id])); // Auto-select newly added faculty
+    // Auto-select all subjects for newly added faculty
+    setSelectedSubjects(prev => {
+      const newMap = new Map(prev);
+      newMap.set(faculty.id, new Set(validSubjects.map((_, idx) => idx)));
+      return newMap;
+    });
     setNewFaculty({ name: '', id: '', subjects: [{ name: '', type: 'theory' as const, periodsPerWeek: 4, allocation: 'random' as const }] });
     
     toast({
@@ -131,10 +137,10 @@ const FacultyDashboard = () => {
 
   const removeFaculty = (id: string) => {
     setFaculties(prev => prev.filter(faculty => faculty.id !== id));
-    setSelectedFacultyIds(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(id);
-      return newSet;
+    setSelectedSubjects(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(id);
+      return newMap;
     });
   };
 
@@ -205,16 +211,44 @@ const FacultyDashboard = () => {
     setEditFacultyForm(null);
   };
 
-  const toggleFacultySelection = (id: string) => {
-    setSelectedFacultyIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
+  const toggleSubjectSelection = (facultyId: string, subjectIndex: number) => {
+    setSelectedSubjects(prev => {
+      const newMap = new Map(prev);
+      const facultySubjects = newMap.get(facultyId) || new Set<number>();
+      const newSet = new Set(facultySubjects);
+      if (newSet.has(subjectIndex)) {
+        newSet.delete(subjectIndex);
       } else {
-        newSet.add(id);
+        newSet.add(subjectIndex);
       }
-      return newSet;
+      if (newSet.size === 0) {
+        newMap.delete(facultyId);
+      } else {
+        newMap.set(facultyId, newSet);
+      }
+      return newMap;
     });
+  };
+
+  const toggleAllFacultySubjects = (facultyId: string, subjects: Subject[]) => {
+    setSelectedSubjects(prev => {
+      const newMap = new Map(prev);
+      const currentSelected = newMap.get(facultyId);
+      if (currentSelected && currentSelected.size === subjects.length) {
+        // All selected, so deselect all
+        newMap.delete(facultyId);
+      } else {
+        // Select all subjects
+        newMap.set(facultyId, new Set(subjects.map((_, idx) => idx)));
+      }
+      return newMap;
+    });
+  };
+
+  const getSelectedSubjectCount = () => {
+    let count = 0;
+    selectedSubjects.forEach(subjects => count += subjects.size);
+    return count;
   };
 
   const generateNewTimetable = () => {
@@ -227,10 +261,10 @@ const FacultyDashboard = () => {
       return;
     }
 
-    if (selectedFacultyIds.size === 0) {
+    if (selectedSubjects.size === 0) {
       toast({
         title: "Error",
-        description: "Please select at least one faculty member",
+        description: "Please select at least one subject",
         variant: "destructive",
       });
       return;
@@ -245,7 +279,16 @@ const FacultyDashboard = () => {
       return;
     }
 
-    const selectedFaculties = faculties.filter(f => selectedFacultyIds.has(f.id));
+    // Filter faculties and only include selected subjects
+    const selectedFaculties = faculties
+      .filter(f => selectedSubjects.has(f.id))
+      .map(f => {
+        const selectedIndices = selectedSubjects.get(f.id)!;
+        return {
+          ...f,
+          subjects: f.subjects.filter((_, idx) => selectedIndices.has(idx))
+        };
+      });
     const timetable = generateTimetable(selectedFaculties, className, year, section, semester, user?.name || 'Faculty');
 
     // Only save and show if timetable has entries
@@ -520,54 +563,63 @@ const FacultyDashboard = () => {
             <CardContent className="space-y-4">
 
               <div>
-                <Label>Added Faculty ({faculties.length}) - {selectedFacultyIds.size} selected</Label>
-                <div className="max-h-32 overflow-y-auto space-y-2 mt-2">
-                  {faculties.map((faculty) => (
-                    <div key={faculty.id} className="flex items-start gap-2 p-2 bg-muted rounded-lg">
-                      <Checkbox
-                        checked={selectedFacultyIds.has(faculty.id)}
-                        onCheckedChange={() => toggleFacultySelection(faculty.id)}
-                        className="mt-1"
-                      />
-                      <div className="flex-1">
-                        <p className="font-medium">{faculty.name}</p>
-                        <div className="flex gap-1 flex-wrap">
-                          {faculty.subjects.map((subject, idx) => (
-                            <Badge 
-                              key={idx} 
-                              variant={subject.type === 'lab' ? 'default' : 'secondary'} 
-                              className={`text-xs ${subject.type === 'lab' ? 'bg-purple-500 text-white' : ''}`}
+                <Label>Added Faculty ({faculties.length}) - {getSelectedSubjectCount()} subjects selected</Label>
+                <div className="max-h-48 overflow-y-auto space-y-2 mt-2">
+                  {faculties.map((faculty) => {
+                    const facultySelectedSubjects = selectedSubjects.get(faculty.id) || new Set<number>();
+                    const allSelected = facultySelectedSubjects.size === faculty.subjects.length;
+                    return (
+                      <div key={faculty.id} className="p-2 bg-muted rounded-lg space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={allSelected}
+                            onCheckedChange={() => toggleAllFacultySubjects(faculty.id, faculty.subjects)}
+                          />
+                          <p className="font-medium flex-1">{faculty.name} <span className="text-muted-foreground text-sm">({faculty.id})</span></p>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => startEditFaculty(faculty)}
                             >
-                              {subject.name} ({subject.type}) - {subject.periodsPerWeek}p/w
-                            </Badge>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeFaculty(faculty.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="ml-6 flex flex-col gap-1">
+                          {faculty.subjects.map((subject, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <Checkbox
+                                checked={facultySelectedSubjects.has(idx)}
+                                onCheckedChange={() => toggleSubjectSelection(faculty.id, idx)}
+                              />
+                              <Badge 
+                                variant={subject.type === 'lab' ? 'default' : 'secondary'} 
+                                className={`text-xs cursor-pointer ${subject.type === 'lab' ? 'bg-purple-500 text-white' : ''} ${!facultySelectedSubjects.has(idx) ? 'opacity-50' : ''}`}
+                                onClick={() => toggleSubjectSelection(faculty.id, idx)}
+                              >
+                                {subject.name} ({subject.type}) - {subject.periodsPerWeek}p/w
+                              </Badge>
+                            </div>
                           ))}
                         </div>
                       </div>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => startEditFaculty(faculty)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeFaculty(faculty.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
               <Button 
                 onClick={generateNewTimetable} 
                 className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-none shadow-lg"
-                disabled={faculties.length === 0 || selectedFacultyIds.size === 0 || !className}
+                disabled={faculties.length === 0 || selectedSubjects.size === 0 || !className}
               >
                 🎯 Generate Smart Timetable
               </Button>

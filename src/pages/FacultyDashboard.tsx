@@ -251,11 +251,25 @@ const FacultyDashboard = () => {
     // Only save and show if timetable has entries
     if (timetable.entries.length === 0) {
       toast({
-        title: "Warning",
-        description: "Generated timetable is empty. Some faculty may already be assigned to other classes at these times.",
+        title: "Generation Failed",
+        description: "Could not generate timetable. All faculty members have conflicts with other sections at every available time slot.",
         variant: "destructive",
       });
       return;
+    }
+
+    // Check for warnings (partial allocation failures)
+    if (timetable.warnings && timetable.warnings.length > 0) {
+      const warningMessages = timetable.warnings.map(w => 
+        `• ${w.subjectName}: Only ${w.allocatedPeriods}/${w.requestedPeriods} periods allocated (${w.facultyName})`
+      ).join('\n');
+      
+      toast({
+        title: "⚠️ Faculty Conflicts Detected",
+        description: `Some subjects could not be fully allocated due to faculty conflicts across sections:\n${warningMessages}`,
+        variant: "destructive",
+        duration: 10000, // Show longer for important warning
+      });
     }
     
     setGeneratedTimetable(timetable);
@@ -266,7 +280,9 @@ const FacultyDashboard = () => {
 
     toast({
       title: "Success",
-      description: "Timetable generated successfully!",
+      description: timetable.warnings?.length 
+        ? "Timetable generated with some conflicts (see warning above)"
+        : "Timetable generated successfully!",
     });
   };
 

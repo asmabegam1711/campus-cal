@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { GeneratedTimetable, TimetableEntry, Faculty } from '@/types/timetable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,10 +6,18 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Download, FileSpreadsheet, FileText, Trash2, Edit3, Save, X } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Download, FileSpreadsheet, FileText, Trash2, Edit3, Save, X, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+
+interface FacultyDetail {
+  facultyId: string;
+  facultyName: string;
+  subjects: { name: string; periods: number; type: 'theory' | 'lab' }[];
+  totalPeriods: number;
+}
 
 interface TimetableDisplayProps {
   timetable: GeneratedTimetable;
@@ -22,8 +30,43 @@ const TimetableDisplay = ({ timetable, onDelete, onUpdate, availableFaculties = 
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimetableEntry | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [facultyDialogOpen, setFacultyDialogOpen] = useState(false);
   const [editedTimetable, setEditedTimetable] = useState<GeneratedTimetable>(timetable);
   const { toast } = useToast();
+
+  // Calculate faculty details from timetable entries
+  const facultyDetails = useMemo((): FacultyDetail[] => {
+    const facultyMap = new Map<string, FacultyDetail>();
+
+    editedTimetable.entries.forEach(entry => {
+      if (!entry.facultyId || entry.isLabContinuation) return;
+
+      if (!facultyMap.has(entry.facultyId)) {
+        facultyMap.set(entry.facultyId, {
+          facultyId: entry.facultyId,
+          facultyName: entry.facultyName,
+          subjects: [],
+          totalPeriods: 0
+        });
+      }
+
+      const faculty = facultyMap.get(entry.facultyId)!;
+      const existingSubject = faculty.subjects.find(s => s.name === entry.subject && s.type === entry.subjectType);
+      
+      if (existingSubject) {
+        existingSubject.periods++;
+      } else {
+        faculty.subjects.push({
+          name: entry.subject,
+          periods: 1,
+          type: entry.subjectType
+        });
+      }
+      faculty.totalPeriods++;
+    });
+
+    return Array.from(facultyMap.values()).sort((a, b) => a.facultyName.localeCompare(b.facultyName));
+  }, [editedTimetable.entries]);
 
   // Update editedTimetable when timetable prop changes
   useEffect(() => {
@@ -338,6 +381,14 @@ const TimetableDisplay = ({ timetable, onDelete, onUpdate, availableFaculties = 
                 <FileText className="mr-2 h-4 w-4" />
                 Download PDF
               </Button>
+              <Button 
+                onClick={() => setFacultyDialogOpen(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                disabled={isEditMode}
+              >
+                <Users className="mr-2 h-4 w-4" />
+                View Faculty Details
+              </Button>
               {onDelete && (
                 <Button 
                   onClick={onDelete} 
@@ -559,6 +610,62 @@ const TimetableDisplay = ({ timetable, onDelete, onUpdate, availableFaculties = 
             </Button>
             <Button onClick={handleSaveEdit}>
               Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Faculty Details Dialog */}
+      <Dialog open={facultyDialogOpen} onOpenChange={setFacultyDialogOpen}>
+        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Faculty Details</DialogTitle>
+            <DialogDescription>
+              Faculty allocation for {timetable.className} - Year {timetable.year} - Section {timetable.section}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {facultyDetails.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Faculty ID</TableHead>
+                  <TableHead>Faculty Name</TableHead>
+                  <TableHead>Subject(s)</TableHead>
+                  <TableHead className="text-center">Periods</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {facultyDetails.map((faculty) => (
+                  <TableRow key={faculty.facultyId}>
+                    <TableCell className="font-mono text-sm">{faculty.facultyId}</TableCell>
+                    <TableCell className="font-medium">{faculty.facultyName}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        {faculty.subjects.map((subject, idx) => (
+                          <span key={idx} className="text-sm">
+                            {subject.name} 
+                            <span className="text-muted-foreground ml-1">
+                              ({subject.type === 'lab' ? 'Lab' : 'Theory'} - {subject.periods} periods)
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center font-bold">{faculty.totalPeriods}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No faculty allocations found in this timetable.
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFacultyDialogOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

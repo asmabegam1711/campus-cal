@@ -24,13 +24,18 @@ class GlobalScheduleManager {
 
   // FIXED: Correctly check faculty availability
   isFacultyAvailable(facultyId: string, day: string, period: number): boolean {
+    // Always reload to ensure we have the latest data
     this.loadFromStorage();
 
     const schedules = this.globalSchedule.get(facultyId) || [];
-
-    return !schedules.some(s =>
-      s.day === day && s.period === period
-    );
+    const isOccupied = schedules.some(s => s.day === day && s.period === period);
+    
+    if (isOccupied) {
+      const conflictingSchedule = schedules.find(s => s.day === day && s.period === period);
+      console.log(`[AVAILABILITY CHECK] Faculty ${facultyId} is OCCUPIED on ${day} period ${period} by ${conflictingSchedule?.classInfo}`);
+    }
+    
+    return !isOccupied;
   }
 
   // FIXED: Add assignment only when available
@@ -43,24 +48,28 @@ class GlobalScheduleManager {
     section: string,
     semester: number
   ): boolean {
-
+    // Always reload to ensure we have the latest data before adding
     this.loadFromStorage();
 
     if (!this.isFacultyAvailable(facultyId, day, period)) {
-      console.warn(`Faculty ${facultyId} conflict at ${day} Period ${period}`);
+      console.warn(`[ADD ASSIGNMENT FAILED] Faculty ${facultyId} conflict at ${day} Period ${period}`);
       return false;
     }
 
     const schedules = this.globalSchedule.get(facultyId) || [];
+    const classInfo = `${className}-${year}-${section}-${semester}`;
+    
     schedules.push({
       facultyId,
       day,
       period,
-      classInfo: `${className}-${year}-${section}-${semester}`
+      classInfo
     });
 
     this.globalSchedule.set(facultyId, schedules);
     this.saveToStorage();
+    
+    console.log(`[ADD ASSIGNMENT SUCCESS] Faculty ${facultyId} assigned to ${day} Period ${period} for ${classInfo}`);
     return true;
   }
 
@@ -81,7 +90,7 @@ class GlobalScheduleManager {
   }
 
   // FIXED STORAGE CONVERSION (MOST IMPORTANT FIX)
-  private loadFromStorage() {
+  public loadFromStorage() {
     try {
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (stored) {

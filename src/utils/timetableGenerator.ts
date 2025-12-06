@@ -168,6 +168,10 @@ export const generateTimetable = (
   // Get global schedule manager instance to prevent cross-section faculty clashes
   const globalScheduleManager = GlobalScheduleManager.getInstance();
   
+  // IMPORTANT: Clear previous assignments for this class before regenerating
+  // This prevents stale data from blocking new allocations
+  globalScheduleManager.removeClassAssignments(className, year, section, semester);
+  
   // Create seeded random generator for this specific class/section
   const classKey = `${className}-${year}-${section}-${semester}`;
   const seed = hashStringToNumber(classKey);
@@ -253,13 +257,23 @@ export const generateTimetable = (
       day: string,
       periods: number[],
       batch: 'A' | 'B'
-    ) => {
+    ): boolean => {
+      // First verify all periods are still available (double-check before committing)
+      const allAvailable = periods.every(period => 
+        globalScheduleManager.isFacultyAvailable(labSubject.faculty.id, day, period)
+      );
+      
+      if (!allAvailable) {
+        console.warn(`Faculty ${labSubject.faculty.id} no longer available for ${day} periods ${periods.join(',')}`);
+        return false;
+      }
+      
       periods.forEach((period, periodIndex) => {
         const timeSlot = timeSlots.find(slot => slot.day === day && slot.period === period);
         
         if (timeSlot) {
           // Register in global schedule to prevent cross-section clashes
-          globalScheduleManager.addFacultyAssignment(
+          const added = globalScheduleManager.addFacultyAssignment(
             labSubject.faculty.id,
             day,
             period,
@@ -268,6 +282,11 @@ export const generateTimetable = (
             section,
             semester
           );
+          
+          if (!added) {
+            console.warn(`Failed to add faculty ${labSubject.faculty.id} to ${day} period ${period} - already assigned elsewhere`);
+            return;
+          }
           
           entries.push({
             id: `${day}-${period}-${labSubject.faculty.id}-${batch}`,
@@ -283,6 +302,7 @@ export const generateTimetable = (
           facultySchedule.get(labSubject.faculty.id)?.add(`${day}-${period}`);
         }
       });
+      return true;
     };
     
     // Rotation pattern for lab allocation
@@ -502,7 +522,7 @@ export const generateTimetable = (
               const slotKey = `${day}-${period}`;
               
               // Register in global schedule to prevent cross-section clashes
-              globalScheduleManager.addFacultyAssignment(
+              const added = globalScheduleManager.addFacultyAssignment(
                 faculty.id,
                 day,
                 period,
@@ -511,6 +531,11 @@ export const generateTimetable = (
                 section,
                 semester
               );
+              
+              if (!added) {
+                console.warn(`Skipping ${subject.name} on ${day} period ${period} - faculty conflict`);
+                return; // Skip this period if faculty is not available
+              }
               
               facultySchedule.get(faculty.id)?.add(slotKey);
               dailySubjectUsage.get(day)?.add(subject.name);
@@ -569,13 +594,14 @@ export const generateTimetable = (
         const periods = findContinuousPeriods(day, continuousCount, faculty.id);
         
         if (periods) {
+          let allAllocated = true;
           periods.forEach(period => {
             const slot = timeSlots.find(s => s.day === day && s.period === period);
             if (slot) {
               const slotKey = `${day}-${period}`;
               
               // Register in global schedule to prevent cross-section clashes
-              globalScheduleManager.addFacultyAssignment(
+              const added = globalScheduleManager.addFacultyAssignment(
                 faculty.id,
                 day,
                 period,
@@ -584,6 +610,12 @@ export const generateTimetable = (
                 section,
                 semester
               );
+              
+              if (!added) {
+                console.warn(`Skipping ${subject.name} on ${day} period ${period} - faculty conflict`);
+                allAllocated = false;
+                return;
+              }
               
               facultySchedule.get(faculty.id)?.add(slotKey);
               dailySubjectUsage.get(day)?.add(subject.name);
@@ -619,9 +651,11 @@ export const generateTimetable = (
             }
           });
           
-          continuousSubjectDay.set(subject.name, day);
-          console.log(`Pre-allocated ${subject.name} (${continuousCount} continuous) on ${day}`);
-          break;
+          if (allAllocated) {
+            continuousSubjectDay.set(subject.name, day);
+            console.log(`Pre-allocated ${subject.name} (${continuousCount} continuous) on ${day}`);
+            break;
+          }
         }
       }
     });
@@ -738,7 +772,7 @@ export const generateTimetable = (
         
         if (selected) {
           // Register in global schedule to prevent cross-section clashes
-          globalScheduleManager.addFacultyAssignment(
+          const added = globalScheduleManager.addFacultyAssignment(
             selected.faculty.id,
             slot.day,
             slot.period,
@@ -747,6 +781,11 @@ export const generateTimetable = (
             section,
             semester
           );
+          
+          if (!added) {
+            console.warn(`Failed to add ${selected.subject.name} on ${slot.day} period ${slot.period} - faculty ${selected.faculty.id} conflict`);
+            return; // Skip this slot, try next
+          }
           
           facultySchedule.get(selected.faculty.id)?.add(slotKey);
           dayUsage.add(selected.subject.name);

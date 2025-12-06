@@ -223,11 +223,6 @@ export const generateTimetable = (
     const batchBAllocated = new Set<string>();
     
     // Valid 3-period continuous slot options (avoiding breaks/lunch)
-    // Option 1: Periods 1-3 (before first break)
-    // Option 2: Periods 3-5 (spans lunch but 3,4 before lunch, 5 after - not ideal)
-    // Option 3: Periods 4-6 (period 4 before lunch, 5-6 after lunch)
-    // Option 4: Periods 5-7 (all after lunch)
-    // Option 5: Periods 6-8 (last 3 periods)
     // Best continuous slots: 1-3 (morning), 5-7 (afternoon), 6-8 (late afternoon)
     const validLabSlots = [
       [1, 2, 3],   // Morning slot before first break
@@ -237,29 +232,49 @@ export const generateTimetable = (
       [4, 5, 6],   // Mid-day alternative
     ];
     
-    // Helper to find 3 continuous available periods on a day
+    // Helper to find 3 continuous available periods on a day for specific faculty
     const find3ContinuousPeriods = (day: string, facultyIds: string[]) => {
+      // Force reload from storage to get latest cross-section assignments
+      globalScheduleManager.loadFromStorage();
+      
+      // Get unique faculty IDs to check
+      const uniqueFacultyIds = [...new Set(facultyIds)];
+      
       // Try each valid slot combination
       for (const periodsNeeded of validLabSlots) {
-        const canAllocate = periodsNeeded.every(period => {
+        let canAllocate = true;
+        
+        for (const period of periodsNeeded) {
           // Check if slot is free locally within this class timetable
           const hasLocalConflict = entries.some(entry => 
             entry.timeSlot.day === day && entry.timeSlot.period === period
           );
-          if (hasLocalConflict) return false;
           
-          // Check global faculty availability for all faculty members
-          const hasGlobalConflict = facultyIds.some(facultyId => 
-            !globalScheduleManager.isFacultyAvailable(facultyId, day, period)
-          );
+          if (hasLocalConflict) {
+            canAllocate = false;
+            break;
+          }
           
-          return !hasGlobalConflict;
-        });
+          // Check global faculty availability for ALL faculty members (critical for cross-section clash prevention)
+          for (const facultyId of uniqueFacultyIds) {
+            const isFacultyFree = globalScheduleManager.isFacultyAvailable(facultyId, day, period);
+            if (!isFacultyFree) {
+              console.log(`[CLASH DETECTED] Faculty ${facultyId} is NOT available on ${day} period ${period} for ${className}-${section}`);
+              canAllocate = false;
+              break;
+            }
+          }
+          
+          if (!canAllocate) break;
+        }
 
         if (canAllocate) {
+          console.log(`[SLOT FOUND] ${day} periods ${periodsNeeded.join(',')} available for faculty: ${uniqueFacultyIds.join(', ')} in ${className}-${section}`);
           return { startPeriod: periodsNeeded[0], periodsNeeded };
         }
       }
+      
+      console.log(`[NO SLOT] Could not find available slot on ${day} for faculty: ${uniqueFacultyIds.join(', ')} in ${className}-${section}`);
       return null;
     };
     
@@ -270,15 +285,19 @@ export const generateTimetable = (
       periods: number[],
       batch: 'A' | 'B'
     ): boolean => {
-      // First verify all periods are still available (double-check before committing)
-      const allAvailable = periods.every(period => 
-        globalScheduleManager.isFacultyAvailable(labSubject.faculty.id, day, period)
-      );
+      // Force reload from storage to get latest cross-section assignments
+      globalScheduleManager.loadFromStorage();
       
-      if (!allAvailable) {
-        console.warn(`Faculty ${labSubject.faculty.id} no longer available for ${day} periods ${periods.join(',')}`);
-        return false;
+      // First verify all periods are still available (double-check before committing)
+      for (const period of periods) {
+        const isAvailable = globalScheduleManager.isFacultyAvailable(labSubject.faculty.id, day, period);
+        if (!isAvailable) {
+          console.warn(`[ALLOCATION BLOCKED] Faculty ${labSubject.faculty.id} NOT available for ${day} period ${period} in ${className}-${section}`);
+          return false;
+        }
       }
+      
+      let allPeriodsAdded = true;
       
       periods.forEach((period, periodIndex) => {
         const timeSlot = timeSlots.find(slot => slot.day === day && slot.period === period);
@@ -296,9 +315,12 @@ export const generateTimetable = (
           );
           
           if (!added) {
-            console.warn(`Failed to add faculty ${labSubject.faculty.id} to ${day} period ${period} - already assigned elsewhere`);
+            console.warn(`[GLOBAL ASSIGNMENT FAILED] Faculty ${labSubject.faculty.id} on ${day} period ${period} for ${className}-${section}`);
+            allPeriodsAdded = false;
             return;
           }
+          
+          console.log(`[LAB ASSIGNED] ${labSubject.subject.name} (Batch ${batch}) - Faculty ${labSubject.faculty.id} on ${day} period ${period} for ${className}-${section}`);
           
           entries.push({
             id: `${day}-${period}-${labSubject.faculty.id}-${batch}`,
@@ -314,7 +336,7 @@ export const generateTimetable = (
           facultySchedule.get(labSubject.faculty.id)?.add(`${day}-${period}`);
         }
       });
-      return true;
+      return allPeriodsAdded;
     };
     
     // Rotation pattern for lab allocation

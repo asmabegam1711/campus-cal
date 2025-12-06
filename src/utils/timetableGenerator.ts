@@ -222,14 +222,26 @@ export const generateTimetable = (
     const batchAAllocated = new Set<string>();
     const batchBAllocated = new Set<string>();
     
+    // Valid 3-period continuous slot options (avoiding breaks/lunch)
+    // Option 1: Periods 1-3 (before first break)
+    // Option 2: Periods 3-5 (spans lunch but 3,4 before lunch, 5 after - not ideal)
+    // Option 3: Periods 4-6 (period 4 before lunch, 5-6 after lunch)
+    // Option 4: Periods 5-7 (all after lunch)
+    // Option 5: Periods 6-8 (last 3 periods)
+    // Best continuous slots: 1-3 (morning), 5-7 (afternoon), 6-8 (late afternoon)
+    const validLabSlots = [
+      [1, 2, 3],   // Morning slot before first break
+      [5, 6, 7],   // Afternoon slot after lunch
+      [6, 7, 8],   // Late afternoon slot
+      [3, 4, 5],   // Mid-day (spans lunch but works)
+      [4, 5, 6],   // Mid-day alternative
+    ];
+    
     // Helper to find 3 continuous available periods on a day
     const find3ContinuousPeriods = (day: string, facultyIds: string[]) => {
-      for (let startPeriod = 1; startPeriod <= 6; startPeriod++) {
-        const periodsNeeded = [startPeriod, startPeriod + 1, startPeriod + 2];
-        
+      // Try each valid slot combination
+      for (const periodsNeeded of validLabSlots) {
         const canAllocate = periodsNeeded.every(period => {
-          if (period > 8) return false;
-          
           // Check if slot is free locally within this class timetable
           const hasLocalConflict = entries.some(entry => 
             entry.timeSlot.day === day && entry.timeSlot.period === period
@@ -245,7 +257,7 @@ export const generateTimetable = (
         });
 
         if (canAllocate) {
-          return { startPeriod, periodsNeeded };
+          return { startPeriod: periodsNeeded[0], periodsNeeded };
         }
       }
       return null;

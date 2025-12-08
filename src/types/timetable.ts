@@ -4,6 +4,7 @@ export interface Subject {
   periodsPerWeek: number;
   allocation: 'continuous' | 'random';
   continuousPeriods?: number; // Number of periods to be placed continuously on the same day
+  preferredDay?: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday'; // Preferred day for continuous allocation
 }
 
 export interface Faculty {

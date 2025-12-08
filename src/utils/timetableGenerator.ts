@@ -339,26 +339,78 @@ export const generateTimetable = (
       return allPeriodsAdded;
     };
     
-    // Rotation pattern for lab allocation
+    // First, allocate labs with preferred days
+    const labsWithPreferredDay = shuffledLabSubjects.filter(ls => ls.subject.preferredDay);
+    const labsWithoutPreferredDay = shuffledLabSubjects.filter(ls => !ls.subject.preferredDay);
+    
+    // Allocate labs with preferred days first
+    labsWithPreferredDay.forEach(labSubject => {
+      const preferredDay = labSubject.subject.preferredDay!;
+      console.log(`[PREFERRED DAY LAB] ${labSubject.subject.name} must be allocated on ${preferredDay}`);
+      
+      const slot = find3ContinuousPeriods(preferredDay, [labSubject.faculty.id]);
+      
+      if (slot) {
+        // Allocate for both batches on the same day
+        const allocatedA = allocateLabSession(labSubject, preferredDay, slot.periodsNeeded, 'A');
+        if (allocatedA) {
+          batchAAllocated.add(labSubject.subject.name);
+        }
+        
+        // Find another slot on the same day for batch B
+        const slotB = find3ContinuousPeriods(preferredDay, [labSubject.faculty.id]);
+        if (slotB) {
+          const allocatedB = allocateLabSession(labSubject, preferredDay, slotB.periodsNeeded, 'B');
+          if (allocatedB) {
+            batchBAllocated.add(labSubject.subject.name);
+          }
+        } else {
+          console.warn(`Could not find second slot on ${preferredDay} for ${labSubject.subject.name} Batch B`);
+          allocationWarnings.push({
+            subjectName: labSubject.subject.name,
+            facultyName: labSubject.faculty.name,
+            facultyId: labSubject.faculty.id,
+            requestedPeriods: 3,
+            allocatedPeriods: 3,
+            reason: `Batch B could not be allocated on preferred day (${preferredDay}) - no available continuous slots`
+          });
+        }
+      } else {
+        console.warn(`Could not find slot on preferred day ${preferredDay} for ${labSubject.subject.name}`);
+        allocationWarnings.push({
+          subjectName: labSubject.subject.name,
+          facultyName: labSubject.faculty.name,
+          facultyId: labSubject.faculty.id,
+          requestedPeriods: 6,
+          allocatedPeriods: 0,
+          reason: `Could not allocate on preferred day (${preferredDay}) - faculty conflict or no available continuous slots`
+        });
+      }
+    });
+    
+    // Rotation pattern for remaining lab allocation (labs without preferred days)
     // For N labs, we need N days where each batch does each lab exactly once
     // Day i: Batch A does Lab i, Batch B does Lab (i + offset) % N
     let dayIndex = 0;
     
-    for (let i = 0; i < numLabs && dayIndex < labDays.length; i++) {
+    for (let i = 0; i < labsWithoutPreferredDay.length && dayIndex < labDays.length; i++) {
       const day = labDays[dayIndex];
       
-      // Calculate which labs to assign on this day
-      const batchALabIndex = i;
-      const batchBLabIndex = (i + Math.floor(numLabs / 2) + (numLabs % 2)) % numLabs;
+      // Skip if this lab is already allocated (had preferred day)
+      const labA = labsWithoutPreferredDay[i];
+      if (batchAAllocated.has(labA.subject.name) && batchBAllocated.has(labA.subject.name)) {
+        continue;
+      }
       
-      const batchALab = shuffledLabSubjects[batchALabIndex];
-      const batchBLab = shuffledLabSubjects[batchBLabIndex];
+      // Calculate which labs to assign on this day
+      const batchBLabIndex = (i + Math.floor(labsWithoutPreferredDay.length / 2) + (labsWithoutPreferredDay.length % 2)) % labsWithoutPreferredDay.length;
+      const labB = labsWithoutPreferredDay[batchBLabIndex];
       
       // Check if both labs are already allocated
-      if (batchAAllocated.has(batchALab.subject.name) && batchBAllocated.has(batchBLab.subject.name)) {
+      if (batchAAllocated.has(labA.subject.name) && batchBAllocated.has(labB.subject.name)) {
         // Try to find unallocated labs
-        const unallocatedA = shuffledLabSubjects.find(ls => !batchAAllocated.has(ls.subject.name));
-        const unallocatedB = shuffledLabSubjects.find(ls => 
+        const unallocatedA = labsWithoutPreferredDay.find(ls => !batchAAllocated.has(ls.subject.name));
+        const unallocatedB = labsWithoutPreferredDay.find(ls => 
           !batchBAllocated.has(ls.subject.name) && ls.subject.name !== unallocatedA?.subject.name
         );
         
@@ -383,42 +435,42 @@ export const generateTimetable = (
       }
       
       // Determine which labs to allocate
-      let labA = batchALab;
-      let labB = batchBLab;
+      let allocLabA = labA;
+      let allocLabB = labB;
       
       // Skip if already allocated
-      if (batchAAllocated.has(labA.subject.name)) {
-        labA = shuffledLabSubjects.find(ls => !batchAAllocated.has(ls.subject.name)) || labA;
+      if (batchAAllocated.has(allocLabA.subject.name)) {
+        allocLabA = labsWithoutPreferredDay.find(ls => !batchAAllocated.has(ls.subject.name)) || allocLabA;
       }
       
-      if (batchBAllocated.has(labB.subject.name) || labB.subject.name === labA.subject.name) {
-        labB = shuffledLabSubjects.find(ls => 
-          !batchBAllocated.has(ls.subject.name) && ls.subject.name !== labA.subject.name
-        ) || labB;
+      if (batchBAllocated.has(allocLabB.subject.name) || allocLabB.subject.name === allocLabA.subject.name) {
+        allocLabB = labsWithoutPreferredDay.find(ls => 
+          !batchBAllocated.has(ls.subject.name) && ls.subject.name !== allocLabA.subject.name
+        ) || allocLabB;
       }
       
       // If we're trying to allocate the same lab to both batches, skip
-      if (labA.subject.name === labB.subject.name) {
+      if (allocLabA.subject.name === allocLabB.subject.name) {
         dayIndex++;
         continue;
       }
       
-      const facultyIds = [labA.faculty.id, labB.faculty.id];
+      const facultyIds = [allocLabA.faculty.id, allocLabB.faculty.id];
       const slot = find3ContinuousPeriods(day, facultyIds);
       
       if (slot) {
         // Allocate labs for both batches on same periods
-        if (!batchAAllocated.has(labA.subject.name)) {
-          allocateLabSession(labA, day, slot.periodsNeeded, 'A');
-          batchAAllocated.add(labA.subject.name);
+        if (!batchAAllocated.has(allocLabA.subject.name)) {
+          allocateLabSession(allocLabA, day, slot.periodsNeeded, 'A');
+          batchAAllocated.add(allocLabA.subject.name);
         }
         
-        if (!batchBAllocated.has(labB.subject.name)) {
-          allocateLabSession(labB, day, slot.periodsNeeded, 'B');
-          batchBAllocated.add(labB.subject.name);
+        if (!batchBAllocated.has(allocLabB.subject.name)) {
+          allocateLabSession(allocLabB, day, slot.periodsNeeded, 'B');
+          batchBAllocated.add(allocLabB.subject.name);
         }
         
-        console.log(`Day ${day}: Batch A → ${labA.subject.name}, Batch B → ${labB.subject.name}`);
+        console.log(`Day ${day}: Batch A → ${allocLabA.subject.name}, Batch B → ${allocLabB.subject.name}`);
         dayIndex++;
       } else {
         console.warn(`Could not find slot on ${day} for labs`);
@@ -538,18 +590,28 @@ export const generateTimetable = (
     
     continuousSubjects3Plus.forEach(({ faculty, subject }) => {
       const continuousCount = subject.continuousPeriods || subject.periodsPerWeek;
-      // Find a non-lab day for this subject
-      const nonLabDays = daysOfWeek.filter(day => !labDays.has(day));
-      const shuffledNonLabDays = rng.shuffle([...nonLabDays]);
       
-      // Also consider lab days as fallback
-      const allDaysToTry = [...shuffledNonLabDays, ...Array.from(labDays)];
+      // Determine which days to try based on preferred day
+      let daysToTry: string[];
+      if (subject.preferredDay) {
+        // If preferred day is set, ONLY try that day (strict requirement)
+        daysToTry = [subject.preferredDay];
+        console.log(`[PREFERRED DAY] ${subject.name} must be allocated on ${subject.preferredDay}`);
+      } else {
+        // Find a non-lab day for this subject
+        const nonLabDays = daysOfWeek.filter(day => !labDays.has(day));
+        const shuffledNonLabDays = rng.shuffle([...nonLabDays]);
+        // Also consider lab days as fallback
+        daysToTry = [...shuffledNonLabDays, ...Array.from(labDays)];
+      }
       
-      for (const day of allDaysToTry) {
+      let allocated = false;
+      for (const day of daysToTry) {
         const periods = findContinuousPeriods(day, continuousCount, faculty.id);
         
         if (periods) {
           // Allocate all continuous periods on this day
+          let allPeriodsAllocated = true;
           periods.forEach(period => {
             const slot = timeSlots.find(s => s.day === day && s.period === period);
             if (slot) {
@@ -568,6 +630,7 @@ export const generateTimetable = (
               
               if (!added) {
                 console.warn(`Skipping ${subject.name} on ${day} period ${period} - faculty conflict`);
+                allPeriodsAllocated = false;
                 return; // Skip this period if faculty is not available
               }
               
@@ -606,10 +669,25 @@ export const generateTimetable = (
             }
           });
           
-          continuousSubjectDay.set(subject.name, day);
-          console.log(`Pre-allocated ${subject.name} (${continuousCount} continuous) on ${day} (non-lab day: ${!labDays.has(day)})`);
-          break;
+          if (allPeriodsAllocated) {
+            continuousSubjectDay.set(subject.name, day);
+            console.log(`Pre-allocated ${subject.name} (${continuousCount} continuous) on ${day} (preferred: ${subject.preferredDay || 'any'})`);
+            allocated = true;
+            break;
+          }
         }
+      }
+      
+      if (!allocated && subject.preferredDay) {
+        // If preferred day was set but couldn't allocate, add warning
+        allocationWarnings.push({
+          subjectName: subject.name,
+          facultyName: faculty.name,
+          facultyId: faculty.id,
+          requestedPeriods: subject.periodsPerWeek,
+          allocatedPeriods: theoryPeriodsAllocated.get(subject.name) || 0,
+          reason: `Could not allocate on preferred day (${subject.preferredDay}) - faculty conflict or no available continuous slots`
+        });
       }
     });
 
@@ -622,9 +700,19 @@ export const generateTimetable = (
       if (isSubjectComplete(subject.name, subject.periodsPerWeek)) return;
       
       const continuousCount = subject.continuousPeriods || subject.periodsPerWeek;
-      const shuffledDays = rng.shuffle([...daysOfWeek]);
       
-      for (const day of shuffledDays) {
+      // Determine which days to try based on preferred day
+      let daysToTry: string[];
+      if (subject.preferredDay) {
+        // If preferred day is set, ONLY try that day (strict requirement)
+        daysToTry = [subject.preferredDay];
+        console.log(`[PREFERRED DAY] ${subject.name} must be allocated on ${subject.preferredDay}`);
+      } else {
+        daysToTry = rng.shuffle([...daysOfWeek]);
+      }
+      
+      let allocated = false;
+      for (const day of daysToTry) {
         const periods = findContinuousPeriods(day, continuousCount, faculty.id);
         
         if (periods) {
@@ -687,10 +775,23 @@ export const generateTimetable = (
           
           if (allAllocated) {
             continuousSubjectDay.set(subject.name, day);
-            console.log(`Pre-allocated ${subject.name} (${continuousCount} continuous) on ${day}`);
+            console.log(`Pre-allocated ${subject.name} (${continuousCount} continuous) on ${day} (preferred: ${subject.preferredDay || 'any'})`);
+            allocated = true;
             break;
           }
         }
+      }
+      
+      if (!allocated && subject.preferredDay) {
+        // If preferred day was set but couldn't allocate, add warning
+        allocationWarnings.push({
+          subjectName: subject.name,
+          facultyName: faculty.name,
+          facultyId: faculty.id,
+          requestedPeriods: subject.periodsPerWeek,
+          allocatedPeriods: theoryPeriodsAllocated.get(subject.name) || 0,
+          reason: `Could not allocate on preferred day (${subject.preferredDay}) - faculty conflict or no available continuous slots`
+        });
       }
     });
 

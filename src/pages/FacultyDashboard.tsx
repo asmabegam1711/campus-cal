@@ -456,19 +456,39 @@ const FacultyDashboard = () => {
                           <option value="continuous">Continuous Allocation</option>
                         </select>
                       </div>
-                      {subject.allocation === 'continuous' && subject.type === 'theory' && (
-                        <div className="flex gap-2 items-center">
-                          <Label className="text-xs whitespace-nowrap">Continuous Periods:</Label>
-                          <Input
-                            type="number"
-                            placeholder="Count"
-                            value={subject.continuousPeriods || subject.periodsPerWeek}
-                            onChange={(e) => updateSubject(index, 'continuousPeriods', parseInt(e.target.value) || 2)}
-                            className="w-20"
-                            min={2}
-                            max={subject.periodsPerWeek}
-                          />
-                          <span className="text-xs text-muted-foreground">(placed on same day)</span>
+                      {subject.allocation === 'continuous' && (
+                        <div className="space-y-2">
+                          {subject.type === 'theory' && (
+                            <div className="flex gap-2 items-center">
+                              <Label className="text-xs whitespace-nowrap">Continuous Periods:</Label>
+                              <Input
+                                type="number"
+                                placeholder="Count"
+                                value={subject.continuousPeriods || subject.periodsPerWeek}
+                                onChange={(e) => updateSubject(index, 'continuousPeriods', parseInt(e.target.value) || 2)}
+                                className="w-20"
+                                min={2}
+                                max={subject.periodsPerWeek}
+                              />
+                              <span className="text-xs text-muted-foreground">(placed on same day)</span>
+                            </div>
+                          )}
+                          <div className="flex gap-2 items-center">
+                            <Label className="text-xs whitespace-nowrap">Preferred Day:</Label>
+                            <select
+                              className="flex h-9 w-32 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background"
+                              value={subject.preferredDay || ''}
+                              onChange={(e) => updateSubject(index, 'preferredDay', e.target.value || undefined)}
+                            >
+                              <option value="">Any Day</option>
+                              <option value="Monday">Monday</option>
+                              <option value="Tuesday">Tuesday</option>
+                              <option value="Wednesday">Wednesday</option>
+                              <option value="Thursday">Thursday</option>
+                              <option value="Friday">Friday</option>
+                              <option value="Saturday">Saturday</option>
+                            </select>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -728,19 +748,39 @@ const FacultyDashboard = () => {
                             <option value="continuous">Continuous Allocation</option>
                           </select>
                         </div>
-                        {subject.allocation === 'continuous' && subject.type === 'theory' && (
-                          <div className="flex gap-2 items-center">
-                            <Label className="text-xs whitespace-nowrap">Continuous Periods:</Label>
-                            <Input
-                              type="number"
-                              placeholder="Count"
-                              value={subject.continuousPeriods || subject.periodsPerWeek}
-                              onChange={(e) => updateEditSubject(index, 'continuousPeriods', parseInt(e.target.value) || 2)}
-                              className="w-20"
-                              min={2}
-                              max={subject.periodsPerWeek}
-                            />
-                            <span className="text-xs text-muted-foreground">(placed on same day)</span>
+                        {subject.allocation === 'continuous' && (
+                          <div className="space-y-2">
+                            {subject.type === 'theory' && (
+                              <div className="flex gap-2 items-center">
+                                <Label className="text-xs whitespace-nowrap">Continuous Periods:</Label>
+                                <Input
+                                  type="number"
+                                  placeholder="Count"
+                                  value={subject.continuousPeriods || subject.periodsPerWeek}
+                                  onChange={(e) => updateEditSubject(index, 'continuousPeriods', parseInt(e.target.value) || 2)}
+                                  className="w-20"
+                                  min={2}
+                                  max={subject.periodsPerWeek}
+                                />
+                                <span className="text-xs text-muted-foreground">(placed on same day)</span>
+                              </div>
+                            )}
+                            <div className="flex gap-2 items-center">
+                              <Label className="text-xs whitespace-nowrap">Preferred Day:</Label>
+                              <select
+                                className="flex h-9 w-32 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background"
+                                value={subject.preferredDay || ''}
+                                onChange={(e) => updateEditSubject(index, 'preferredDay', e.target.value || undefined)}
+                              >
+                                <option value="">Any Day</option>
+                                <option value="Monday">Monday</option>
+                                <option value="Tuesday">Tuesday</option>
+                                <option value="Wednesday">Wednesday</option>
+                                <option value="Thursday">Thursday</option>
+                                <option value="Friday">Friday</option>
+                                <option value="Saturday">Saturday</option>
+                              </select>
+                            </div>
                           </div>
                         )}
                       </div>
